@@ -22,6 +22,7 @@ let selectionViewportListenersAdded = false;
 let selectionScrollRestoreTimer = null;
 let selectionIconHiddenForScroll = false;
 
+let controlsTornDown = false;
 // One-click highlighting: an opt-in setting (default off) that turns the
 // selection icon into "paint with the colour used last" instead of "open the
 // palette". The palette is not lost by it - clicking the highlight that press
@@ -215,6 +216,7 @@ function addJellyAnimation(btn) {
 
 // Create highlight controller UI
 function createHighlightControls() {
+  if (controlsTornDown) return;
   if (highlightControlsContainer) return;
   highlightControlsContainer = document.createElement('div');
   highlightControlsContainer.className = 'text-highlighter-controls';
@@ -1005,6 +1007,7 @@ function refreshHighlightControlsColors() {
 
 // Display highlight controller UI
 function showControlUi(highlightElement, e) {
+  if (controlsTornDown) return;
   if (!highlightControlsContainer) createHighlightControls();
   syncTrailingButton(highlightControlsContainer);
 
@@ -1133,24 +1136,27 @@ function setOneClickHighlightEnabled(enabled) {
 // The last used colour is written by whichever tab painted last, so this tab
 // learns it from storage rather than from a message: the icon then offers the
 // same colour in every open tab, including the ones the paint did not happen in.
+function handleStorageChanged(changes, areaName) {
+  if (areaName && areaName !== 'local') return;
+  if (changes && changes.lastUsedColor) {
+    lastUsedColorValue = changes.lastUsedColor.newValue || null;
+    applySelectionIconAppearance();
+  }
+}
+
 function watchLastUsedColor() {
+  if (controlsTornDown) return;
   if (lastUsedColorWatcherAdded) return;
   if (!browserAPI.storage || !browserAPI.storage.onChanged) return;
   lastUsedColorWatcherAdded = true;
 
-  browserAPI.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName && areaName !== 'local') return;
-    if (changes && changes.lastUsedColor) {
-      lastUsedColorValue = changes.lastUsedColor.newValue || null;
-      applySelectionIconAppearance();
-    }
-  });
+  browserAPI.storage.onChanged.addListener(handleStorageChanged);
 }
 
 // Initialize selection controls feature
 function initializeSelectionControls() {
+  if (controlsTornDown) return;
   // Not awaited: the listeners below have to be in place before the round trip
-  // finishes, the way they were when this was a callback.
   loadSelectionControlsSetting();
   watchLastUsedColor();
 
@@ -1757,49 +1763,131 @@ function createHighlightWithColor(color) {
 // Global click event handler - only add once
 let globalClickListenerAdded = false;
 
+function handleGlobalClickCapture(e) {
+  // The more menu belongs to the bar that opened it, but lives outside it.
+  // Its items close the menu themselves; the bars stay for whatever the item
+  // does next, such as the colour picker.
+  if (e.target && typeof e.target.closest === 'function' &&
+      e.target.closest('.text-highlighter-more-menu')) {
+    return;
+  }
+
+  // Handle existing highlight controls
+  if (highlightControlsContainer) {
+    // While a colour picker is open, keep whichever bar opened it visible.
+    if (colorPickerOpen) {
+      return; 
+    }
+
+    const isClickOnHighlight = activeHighlightElement &&
+      (activeHighlightElement.contains(e.target) || activeHighlightElement === e.target);
+    const isClickOnControls = highlightControlsContainer.contains(e.target) ||
+      highlightControlsContainer === e.target;
+
+    if (!isClickOnHighlight && !isClickOnControls) {
+      hideHighlightControls();
+    }
+  }
+
+  // Handle selection controls
+  if (!selectionControlsEnabled) return;
+  
+  if (selectionIcon && !selectionIcon.contains(e.target)) {
+    hideSelectionIcon();
+  }
+  
+  if (selectionControlsContainer && !selectionControlsContainer.contains(e.target)) {
+    hideSelectionControls();
+  }
+}
+
 function addGlobalClickListener() {
+  if (controlsTornDown) return;
   if (globalClickListenerAdded) return;
   
-  document.addEventListener('click', function (e) {
-    // The more menu belongs to the bar that opened it, but lives outside it.
-    // Its items close the menu themselves; the bars stay for whatever the item
-    // does next, such as the colour picker.
-    if (e.target && typeof e.target.closest === 'function' &&
-        e.target.closest('.text-highlighter-more-menu')) {
-      return;
-    }
-
-    // Handle existing highlight controls
-    if (highlightControlsContainer) {
-      // While a colour picker is open, keep whichever bar opened it visible.
-      if (colorPickerOpen) {
-        return; 
-      }
-
-      const isClickOnHighlight = activeHighlightElement &&
-        (activeHighlightElement.contains(e.target) || activeHighlightElement === e.target);
-      const isClickOnControls = highlightControlsContainer.contains(e.target) ||
-        highlightControlsContainer === e.target;
-
-      if (!isClickOnHighlight && !isClickOnControls) {
-        hideHighlightControls();
-      }
-    }
-
-    // Handle selection controls
-    if (!selectionControlsEnabled) return;
-    
-    if (selectionIcon && !selectionIcon.contains(e.target)) {
-      hideSelectionIcon();
-    }
-    
-    if (selectionControlsContainer && !selectionControlsContainer.contains(e.target)) {
-      hideSelectionControls();
-    }
-  }, true); // Use capture phase to handle this before other handlers
+  document.addEventListener('click', handleGlobalClickCapture, true);
   
   globalClickListenerAdded = true;
 }
+
+function teardown() {
+  if (controlsTornDown) return;
+  controlsTornDown = true;
+
+  document.removeEventListener('mouseup', handleSelectionMouseUp);
+  document.removeEventListener('selectionchange', handleSelectionChange);
+  document.removeEventListener('touchend', handleSelectionTouchEnd);
+
+  if (selectionViewportListenersAdded) {
+    window.removeEventListener('scroll', handleSelectionScroll);
+    window.removeEventListener('resize', handleSelectionViewportChange);
+    selectionViewportListenersAdded = false;
+  }
+
+  window.removeEventListener('resize', refreshOpenColorScrollHints);
+
+  if (globalClickListenerAdded) {
+    document.removeEventListener('click', handleGlobalClickCapture, true);
+    globalClickListenerAdded = false;
+  }
+
+  if (lastUsedColorWatcherAdded) {
+    if (typeof browserAPI?.storage?.onChanged?.removeListener === 'function') {
+      browserAPI.storage.onChanged.removeListener(handleStorageChanged);
+    }
+    lastUsedColorWatcherAdded = false;
+  }
+
+  hideMoreMenu();
+
+  if (currentCloseHandler) {
+    document.removeEventListener('click', currentCloseHandler);
+    currentCloseHandler = null;
+  }
+  const openPickers = document.querySelectorAll('.custom-color-picker');
+  openPickers.forEach(el => el.remove());
+  colorPickerOpen = false;
+
+  if (selectionScrollRestoreTimer) {
+    clearTimeout(selectionScrollRestoreTimer);
+    selectionScrollRestoreTimer = null;
+  }
+
+  if (highlightControlsContainer) {
+    highlightControlsContainer.remove();
+    highlightControlsContainer = null;
+  }
+  document.querySelectorAll('.text-highlighter-controls').forEach(el => el.remove());
+
+  if (selectionIcon) {
+    selectionIcon.remove();
+    selectionIcon = null;
+  }
+  if (selectionControlsContainer) {
+    selectionControlsContainer.remove();
+    selectionControlsContainer = null;
+  }
+  document.querySelectorAll('.text-highlighter-selection-icon, .text-highlighter-selection-controls').forEach(el => el.remove());
+
+  if (uiMountRoot) {
+    uiMountRoot.remove();
+    uiMountRoot = null;
+  }
+  document.querySelectorAll('.text-highlighter-ui-root').forEach(el => el.remove());
+
+  activeHighlightElement = null;
+  currentSelection = null;
+}
+
+window.TextHighlighterControls = {
+  createHighlightControls,
+  hideHighlightControls,
+  refreshHighlightControlsColors,
+  setSelectionControlsVisibility,
+  setOneClickHighlightEnabled,
+  initializeSelectionControls,
+  teardown,
+};
 
 // Auto-initialize selection controls when the script loads
 if (document.readyState === 'loading') {

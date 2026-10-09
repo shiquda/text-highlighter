@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
-  "version": "2.13.1",
+  "version": "3.0.0",
   "description": "__MSG_extensionDescription__",
   "default_locale": "en",
   "permissions": [
@@ -9,10 +9,12 @@
     "contextMenus",
     "activeTab",
     "tabs",
-    "alarms"
+    "alarms",
+    "scripting",
+    "downloads"
   ],
   "host_permissions": [
-    "https://text-highlighter-sync.cuspymd.workers.dev/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js",
@@ -65,26 +67,6 @@
       "description": "__MSG_commandPreviousHighlight__"
     }
   },
-  "content_scripts": [
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "content-scripts/content-common.js",
-        "content-scripts/minimap.js",
-        "content-scripts/color-core.js",
-        "content-scripts/content-core.js",
-        "content-scripts/restore-core.js",
-        "content-scripts/jump-core.js",
-        "content-scripts/controls.js",
-        "content-scripts/content.js"
-      ],
-      "css": [
-        "styles.css"
-      ]
-    }
-  ],
   "icons": {
     "16": "images/icon16.png",
     "48": "images/icon48.png",

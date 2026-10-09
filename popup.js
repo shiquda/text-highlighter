@@ -3,6 +3,7 @@ import { debugLog } from './shared/logger.js';
 import { createLocalizedModalHelpers } from './shared/modal.js';
 import { initializeThemeWatcher } from './shared/theme.js';
 import { sendMessageToTab } from './shared/tab-broadcast.js';
+import { sendToBackground } from './shared/runtime-message.js';
 
 const URL_PARAMS  = new URLSearchParams(window.location.search);
 
@@ -68,6 +69,37 @@ const { showConfirmModal, showAlertModal } = createLocalizedModalHelpers(
   (key, defaultValue) => browserAPI.i18n.getMessage(key) || defaultValue
 );
 
+function getMessage(key, fallback = '') {
+  if (typeof chrome !== 'undefined' && browserAPI.i18n) {
+    return browserAPI.i18n.getMessage(key) || fallback || key;
+  }
+  return fallback || key;
+}
+
+function extractHostname(url) {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    // A file has no hostname; its name is the closest thing to one, and an
+    // empty line under "This site" would read as a page that failed to load.
+    if (parsed.protocol === 'file:') return decodeURIComponent(parsed.pathname.split('/').pop() || '');
+    return parsed.hostname;
+  } catch {
+    return '';
+  }
+}
+
+function extractScheme(url) {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol ? parsed.protocol.replace(/:$/, '') : '';
+  } catch {
+    const match = /^([a-z][a-z0-9+.-]*):/i.exec(url);
+    return match ? match[1].toLowerCase() : '';
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async function () {
   // Initialize internationalization first
   initializeI18n();
@@ -81,6 +113,163 @@ document.addEventListener('DOMContentLoaded', async function () {
   const viewAllPagesBtn = document.getElementById('view-all-pages');
   const openSettingsBtn = document.getElementById('open-settings');
 
+  const siteHostnameEl = document.getElementById('site-hostname');
+  const siteStatusEl = document.getElementById('site-status');
+  const siteModeNoteEl = document.getElementById('site-mode-note');
+  const siteToggleBtn = document.getElementById('site-toggle-btn');
+  const siteFeedbackEl = document.getElementById('site-feedback');
+  const siteNoteEl = document.getElementById('site-note');
+  const siteRefreshBtn = document.getElementById('site-refresh-btn');
+
+  let currentSiteStatus = null;
+  let currentTab = null;
+
+  function showFeedback(text, showRefresh = false) {
+    if (siteNoteEl) siteNoteEl.textContent = text;
+    if (siteRefreshBtn) {
+      siteRefreshBtn.textContent = getMessage('siteRefreshButton');
+      siteRefreshBtn.style.display = showRefresh ? 'block' : 'none';
+    }
+    if (siteFeedbackEl) siteFeedbackEl.style.display = 'block';
+  }
+
+  function renderSiteStatus(status, tab) {
+    currentSiteStatus = status;
+    if (!status) return;
+
+    if (siteFeedbackEl) siteFeedbackEl.style.display = 'none';
+    if (siteNoteEl) siteNoteEl.textContent = '';
+    if (siteRefreshBtn) siteRefreshBtn.style.display = 'none';
+
+    if (status.supported === false) {
+      if (siteHostnameEl) siteHostnameEl.textContent = extractScheme(tab?.url);
+      if (siteStatusEl) siteStatusEl.textContent = getMessage('siteStatusUnsupported');
+      if (siteModeNoteEl) {
+        siteModeNoteEl.textContent = '';
+        siteModeNoteEl.style.display = 'none';
+      }
+      if (siteToggleBtn) siteToggleBtn.style.display = 'none';
+      return;
+    }
+
+    const hostname = status.hostname || extractHostname(tab?.url);
+    if (siteHostnameEl) siteHostnameEl.textContent = hostname;
+
+    if (status.mode === 'all') {
+      if (siteStatusEl) siteStatusEl.textContent = getMessage('siteStatusEnabled');
+      if (siteModeNoteEl) {
+        siteModeNoteEl.textContent = getMessage('siteModeAllNote');
+        siteModeNoteEl.style.display = 'block';
+      }
+      if (siteToggleBtn) siteToggleBtn.style.display = 'none';
+      return;
+    }
+
+    if (status.mode === 'allowlist') {
+      if (siteModeNoteEl) {
+        siteModeNoteEl.textContent = getMessage('siteModeAllowlistNote');
+        siteModeNoteEl.style.display = 'block';
+      }
+
+      // Nothing to add or remove when the page has no hostname to write a rule
+      // for: the button would be there and do nothing.
+      if (!hostname) {
+        if (siteStatusEl) siteStatusEl.textContent = getMessage('siteStatusDisabled');
+        if (siteToggleBtn) siteToggleBtn.style.display = 'none';
+        return;
+      }
+
+      if (!status.allowed) {
+        if (siteStatusEl) siteStatusEl.textContent = getMessage('siteStatusDisabled');
+        if (siteToggleBtn) {
+          siteToggleBtn.className = 'btn btn-primary';
+          siteToggleBtn.textContent = getMessage('siteEnableButton');
+          siteToggleBtn.style.display = 'block';
+        }
+      } else {
+        if (siteStatusEl) siteStatusEl.textContent = getMessage('siteStatusEnabled');
+        if (siteToggleBtn) {
+          siteToggleBtn.className = 'btn';
+          siteToggleBtn.textContent = getMessage('siteRemoveButton');
+          siteToggleBtn.style.display = 'block';
+        }
+      }
+    }
+  }
+
+  async function loadSiteStatus() {
+    currentTab = await getActiveTab();
+    if (!currentTab || !currentTab.url) return;
+
+    const response = await sendToBackground({
+      action: 'getSiteStatus',
+      url: currentTab.url,
+    });
+
+    if (response && response.success && response.status) {
+      renderSiteStatus(response.status, currentTab);
+    }
+  }
+
+  if (siteToggleBtn) {
+    siteToggleBtn.addEventListener('click', async () => {
+      if (!currentSiteStatus) return;
+
+      if (!currentTab) currentTab = await getActiveTab();
+      const hostname = currentSiteStatus.hostname || extractHostname(currentTab?.url);
+      if (!hostname) return;
+
+      const isEnabling = currentSiteStatus.mode === 'allowlist' && !currentSiteStatus.allowed;
+      siteToggleBtn.disabled = true;
+
+      try {
+        const payload = isEnabling
+          ? { action: 'addSiteRule', hostname, includeSubdomains: false }
+          : { action: 'removeSiteRule', hostname };
+
+        const response = await sendToBackground(payload);
+
+        if (!response || !response.success) {
+          showFeedback(getMessage('siteActionFailed'), false);
+          return;
+        }
+
+        // Background is the single source of truth for evaluated policy; query rather than hand-patching local state.
+        const statusResponse = await sendToBackground({
+          action: 'getSiteStatus',
+          url: currentTab?.url,
+        });
+
+        if (statusResponse && statusResponse.success && statusResponse.status) {
+          renderSiteStatus(statusResponse.status, currentTab);
+        }
+
+        if (isEnabling) {
+          if (response.needsRefresh === true) {
+            showFeedback(getMessage('siteNeedsRefresh'), true);
+          } else {
+            showFeedback(getMessage('siteEnabledNote'), false);
+          }
+        } else {
+          showFeedback(getMessage('siteRemovedNote'), false);
+        }
+      } finally {
+        siteToggleBtn.disabled = false;
+      }
+    });
+  }
+
+  if (siteRefreshBtn) {
+    siteRefreshBtn.addEventListener('click', async () => {
+      siteRefreshBtn.disabled = true;
+      if (!currentTab) currentTab = await getActiveTab();
+      if (currentTab && currentTab.id) {
+        await browserAPI.tabs.reload(currentTab.id);
+      }
+      // Reload the tab and close so the user lands straight back on the active page.
+      window.close();
+    });
+  }
   // Load highlight information from current active tab
   async function loadHighlights() {
     const tab = await getActiveTab();
@@ -425,5 +614,8 @@ document.addEventListener('DOMContentLoaded', async function () {
   });
 
   // Initialization
-  await loadHighlights();
+  await Promise.all([
+    loadHighlights(),
+    loadSiteStatus(),
+  ]);
 });

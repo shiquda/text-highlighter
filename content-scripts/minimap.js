@@ -9,6 +9,8 @@ class MinimapManager {
     this.defaultMinimapHeight = 300;
     this.touchExpandTimer = null;
     this.touchExpandDuration = 2200;
+    this.scrollHandler = null;
+    this.resizeHandler = null;
   }
 
   // Initialize minimap
@@ -49,14 +51,16 @@ class MinimapManager {
     }
 
     // Scroll event listener
-    window.addEventListener('scroll', this.throttle(() => {
+    this.scrollHandler = this.throttle(() => {
       this.updateMarkerVisibility();
-    }, 100));
+    }, 100);
+    window.addEventListener('scroll', this.scrollHandler);
 
     // Window resize event listener
-    window.addEventListener('resize', this.throttle(() => {
+    this.resizeHandler = this.throttle(() => {
       this.updateMarkers();
-    }, 200));
+    }, 200);
+    window.addEventListener('resize', this.resizeHandler);
   }
 
   // Update minimap markers
@@ -286,11 +290,20 @@ class MinimapManager {
     });
     highlightFlashTimers.clear();
 
+    if (this.scrollHandler) {
+      window.removeEventListener('scroll', this.scrollHandler);
+      this.scrollHandler = null;
+    }
+
+    if (this.resizeHandler) {
+      window.removeEventListener('resize', this.resizeHandler);
+      this.resizeHandler = null;
+    }
+
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
       this.resizeObserver = null;
     }
-
     if (this.container && this.container.parentNode) {
       this.container.parentNode.removeChild(this.container);
       this.container = null;
@@ -318,3 +331,5 @@ class MinimapManager {
     });
   }
 }
+
+window.MinimapManager = MinimapManager;

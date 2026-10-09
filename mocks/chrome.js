@@ -80,16 +80,32 @@ export default {
   },
   contextMenus: {
     create: jest.fn(),
+    update: jest.fn(() => Promise.resolve()),
+    remove: jest.fn(() => Promise.resolve()),
     removeAll: jest.fn(() => Promise.resolve()),
     onClicked: {
       addListener: jest.fn(),
     },
+  },
+  // Dynamic content-script registration for the site allowlist. The defaults
+  // resolve empty: a test that cares about the registered script passes its own
+  // mockImplementation, and one that does not should not have to know the shape.
+  scripting: {
+    registerContentScripts: jest.fn(() => Promise.resolve()),
+    unregisterContentScripts: jest.fn(() => Promise.resolve()),
+    getRegisteredContentScripts: jest.fn(() => Promise.resolve([])),
+    executeScript: jest.fn(() => Promise.resolve([])),
+    insertCSS: jest.fn(() => Promise.resolve()),
+  },
+  downloads: {
+    download: jest.fn(() => Promise.resolve(1)),
   },
   tabs: {
     query: jest.fn(() => Promise.resolve([])),
     get: jest.fn(tabId => Promise.resolve({ id: tabId, url: 'https://example.com/' })),
     create: jest.fn(() => Promise.resolve({ id: 1 })),
     update: jest.fn(() => Promise.resolve({})),
+    reload: jest.fn(() => Promise.resolve()),
     // A mock that only returns a promise stays silent about the callback form,
     // which is the very failure mode being guarded.
     sendMessage: jest.fn((tabId, message, ...optionalArgs) => {
@@ -97,6 +113,12 @@ export default {
       return Promise.resolve();
     }),
     onActivated: {
+      addListener: jest.fn(),
+    },
+    onUpdated: {
+      addListener: jest.fn(),
+    },
+    onRemoved: {
       addListener: jest.fn(),
     },
   },
@@ -114,6 +136,7 @@ export default {
   },
   alarms: {
     create: jest.fn(),
+    clear: jest.fn(() => Promise.resolve(true)),
     onAlarm: {
       addListener: jest.fn(),
     },

@@ -7,7 +7,6 @@ import {
   createOrUpdateContextMenus,
   addCustomColor,
   clearCustomColors,
-  applySettingsFromSync,
   broadcastSettingsToTabs,
   loadCustomColors,
   getShortcutColorMap,
@@ -194,100 +193,13 @@ describe('settings-service', () => {
     });
   });
 
-  // ===================================================================
-  // Sync settings application
-  // ===================================================================
-
-  describe('applySettingsFromSync', () => {
-    it('should update custom colors from sync and return colorsChanged: true', async () => {
-      const result = await applySettingsFromSync({
-        customColors: [{ id: 'custom_sync', color: '#FFAA11' }],
-      });
-
-      expect(result.colorsChanged).toBe(true);
-      expect(chrome.storage.local.set).toHaveBeenCalledWith(
-        expect.objectContaining({ customColors: expect.any(Array) }),
-      );
-    });
-
-    it('should persist minimapVisible locally and return colorsChanged: false', async () => {
-      const result = await applySettingsFromSync({ minimapVisible: false });
-
-      expect(result.colorsChanged).toBe(false);
-      expect(chrome.storage.local.set).toHaveBeenCalledWith({ minimapVisible: false });
-    });
-
-    it('should persist selectionControlsVisible locally and return colorsChanged: false', async () => {
-      const result = await applySettingsFromSync({ selectionControlsVisible: false });
-
-      expect(result.colorsChanged).toBe(false);
-      expect(chrome.storage.local.set).toHaveBeenCalledWith({ selectionControlsVisible: false });
-    });
-
-    it('should persist oneClickHighlightEnabled locally and return colorsChanged: false', async () => {
-      const result = await applySettingsFromSync({ oneClickHighlightEnabled: true });
-
-      expect(result.colorsChanged).toBe(false);
-      expect(chrome.storage.local.set).toHaveBeenCalledWith({ oneClickHighlightEnabled: true });
-    });
-
-    it('should return colorsChanged: false when settings contain no color data', async () => {
-      const result = await applySettingsFromSync({});
-      expect(result.colorsChanged).toBe(false);
-    });
-
-    it('should adopt a shortcutColorMap from sync', async () => {
-      await applySettingsFromSync({ shortcutColorMap: { command_slot_1: 'custom_1' } });
-
-      expect(chrome.storage.local.set).toHaveBeenCalledWith({
-        shortcutColorMap: { command_slot_1: 'custom_1' },
-      });
-      expect(getShortcutColorMap()).toEqual({ command_slot_1: 'custom_1' });
-    });
-
-    // A null map means "no custom mapping" and must be adopted like any other value.
-    // Skipping it left two devices claiming the same settings timestamp while disagreeing
-    // on content, which made every sync cycle push a blob at the other device forever.
-    it('should adopt a null shortcutColorMap instead of keeping the local one', async () => {
-      await applySettingsFromSync({ shortcutColorMap: { command_slot_1: 'custom_1' } });
-      chrome.storage.local.set.mockClear();
-
-      await applySettingsFromSync({ shortcutColorMap: null });
-
-      expect(chrome.storage.local.set).toHaveBeenCalledWith({ shortcutColorMap: null });
-    });
-
-    it('should keep the in-memory shortcut map usable after adopting null', async () => {
-      await applySettingsFromSync({ shortcutColorMap: null });
-
-      const map = getShortcutColorMap();
-      expect(map).not.toBeNull();
-      expect(() => Object.keys(map)).not.toThrow();
-    });
-
-    it('should leave the shortcut map untouched when the field is absent', async () => {
-      await applySettingsFromSync({ shortcutColorMap: { command_slot_2: 'custom_2' } });
-      chrome.storage.local.set.mockClear();
-
-      await applySettingsFromSync({ minimapVisible: true });
-
-      expect(chrome.storage.local.set).not.toHaveBeenCalledWith(
-        expect.objectContaining({ shortcutColorMap: expect.anything() }),
-      );
-      expect(getShortcutColorMap()).toEqual({ command_slot_2: 'custom_2' });
-    });
-  });
-
   describe('loadCustomColors', () => {
-    it('should sanitize legacy custom colors without writing full settings back to sync', async () => {
-      chrome.storage.sync.get.mockResolvedValueOnce({
-        settings: {
-          customColors: [
-            { id: 'custom_legacy', nameKey: 'customColor', color: '#123456' },
-          ],
-        },
+    it('should sanitize legacy custom colors from local storage and never touch storage.sync', async () => {
+      chrome.storage.local.get.mockResolvedValueOnce({
+        customColors: [
+          { id: 'custom_legacy', nameKey: 'customColor', color: '#123456' },
+        ],
       });
-      chrome.storage.local.get.mockResolvedValueOnce({});
 
       // Every palette change above already loaded this module's colours, so
       // the load has to be watched on a fresh copy.
@@ -301,6 +213,7 @@ describe('settings-service', () => {
           { id: 'custom_legacy', color: '#123456', colorNumber: 1 },
         ],
       });
+      expect(chrome.storage.sync.get).not.toHaveBeenCalled();
       expect(chrome.storage.sync.set).not.toHaveBeenCalled();
     });
   });

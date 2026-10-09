@@ -33,7 +33,20 @@ const EXTENSION_DIR = path.join(__dirname, '..', 'dist-firefox');
 const PAGES_DIR = path.join(__dirname, '..', 'e2e-tests');
 
 function servePages() {
+  const dav = { body: null, etag: null, version: 0, calls: [] };
+  // A second server with the habits the first one does not have: it wants
+  // credentials on every request, and it answers HEAD with 501. Providers that
+  // only ever met a permissive server get their fallback path wrong.
+  const secureDav = { body: null, etag: null, version: 0, calls: [], username: 'marks', password: 'local-only' };
   const server = http.createServer((req, res) => {
+    if (req.url.startsWith('/dav-secure/')) {
+      serveWebdav(req, res, secureDav, { requireAuth: true, headUnsupported: true });
+      return;
+    }
+    if (req.url.startsWith('/dav/')) {
+      serveWebdav(req, res, dav);
+      return;
+    }
     const name = path.basename((req.url === '/' ? '/test-page.html' : req.url).split('?')[0]);
     fs.readFile(path.join(PAGES_DIR, name), (err, body) => {
       if (err) {
@@ -46,8 +59,59 @@ function servePages() {
     });
   });
   return new Promise(resolve => {
-    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port, dav, secureDav }));
   });
+}
+
+/**
+ * Just enough WebDAV for the backup provider: HEAD, GET and an ETag-checked PUT.
+ *
+ * The backup's own tests use a fake fetch, which cannot tell whether the
+ * browser lets an extension PUT to a plain-HTTP host at all. This can.
+ */
+function serveWebdav(req, res, dav, options = {}) {
+  dav.calls.push(req.method);
+  const cors = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'HEAD, GET, PUT, OPTIONS',
+    'Access-Control-Allow-Headers': '*',
+    'Access-Control-Expose-Headers': 'ETag, Last-Modified',
+  };
+  const send = (status, headers = {}, body = '') => {
+    res.writeHead(status, { ...cors, ...headers });
+    res.end(body);
+  };
+
+  if (req.method === 'OPTIONS') return send(204);
+
+  if (options.requireAuth) {
+    const expected = `Basic ${Buffer.from(`${dav.username}:${dav.password}`).toString('base64')}`;
+    if (req.headers.authorization !== expected) {
+      return send(401, { 'WWW-Authenticate': 'Basic realm="marks-local"' });
+    }
+  }
+
+  // A server that refuses HEAD exercises the provider's GET fallback; a 404 is
+  // not the only answer an absent file can get.
+  if (options.headUnsupported && req.method === 'HEAD') return send(501);
+
+  if (req.method === 'PUT') {
+    const ifMatch = req.headers['if-match'];
+    if (ifMatch && ifMatch !== dav.etag) return send(412);
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+      dav.body = Buffer.concat(chunks).toString('utf-8');
+      dav.etag = `"dav-${dav.version += 1}"`;
+      send(201, { ETag: dav.etag });
+    });
+    return undefined;
+  }
+
+  if (!dav.body) return send(404);
+  if (req.method === 'HEAD') return send(200, { ETag: dav.etag, 'Last-Modified': new Date().toUTCString() });
+  if (req.method === 'GET') return send(200, { ETag: dav.etag, 'Content-Type': 'application/json' }, dav.body);
+  return send(405);
 }
 
 export async function startHarness() {
@@ -55,10 +119,10 @@ export async function startHarness() {
     throw new Error('dist-firefox is missing. Run `npm run deploy:firefox` first.');
   }
 
-  const { server, port } = await servePages();
+  const { server, port, dav, secureDav } = await servePages();
   let driver = null;
   try {
-    return await buildHarness(server, port, handle => { driver = handle; });
+    return await buildHarness(server, port, { dav, secureDav }, handle => { driver = handle; });
   } catch (error) {
     // Nothing has been handed back yet, so nothing else can close these. A
     // listening socket alone is enough to keep `node --test` alive long after
@@ -69,7 +133,7 @@ export async function startHarness() {
   }
 }
 
-async function buildHarness(server, port, keepDriver) {
+async function buildHarness(server, port, davs, keepDriver) {
   const options = new firefox.Options();
   if (process.env.FIREFOX_BINARY) options.setBinary(process.env.FIREFOX_BINARY);
   if (!process.env.HEADFUL) options.addArguments('-headless');
@@ -91,6 +155,10 @@ async function buildHarness(server, port, keepDriver) {
   const harness = {
     driver,
     baseUrl: `http://127.0.0.1:${port}`,
+    davUrl: `http://127.0.0.1:${port}/dav/marks-local-backup.enc.json`,
+    secureDavUrl: `http://127.0.0.1:${port}/dav-secure/marks-local-backup.enc.json`,
+    dav: davs.dav,
+    secureDav: davs.secureDav,
     pageTab,
     pageUrl: null,
     extensionTab: null,

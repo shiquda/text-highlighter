@@ -30,10 +30,10 @@
     "message": "ページの準備を確認できませんでした。ハイライトを選択して再試行してください。"
   },
   "extensionName": {
-    "message": "Marks: テキストハイライター"
+    "message": "Marks Local"
   },
   "extensionDescription": {
-    "message": "ウェブページのテキストを選択して色付きでマークできる拡張機能"
+    "message": "Local-first text highlighting with optional encrypted backups to GitHub Gist or WebDAV."
   },
   "highlightText": {
     "message": "テキストをハイライト"
@@ -202,7 +202,8 @@
   },
   "moreOptions": {
     "message": "その他"
-  },  "refresh": {
+  },
+  "refresh": {
     "message": "更新",
     "description": "ハイライトしたページ一覧の更新ボタンのテキスト"
   },
@@ -296,72 +297,119 @@
   "colorChangeWarning": {
     "message": "既存のハイライトには影響しません。"
   },
-  "cloudSyncSection": {
-    "message": "クラウド同期（ベータ版）"
+  "siteRulesSection": {
+    "message": "Site Rules"
   },
-  "cloudSyncIntro": {
-    "message": "ブラウザ同期が利用できない環境（Android版Firefoxなど）向けに、暗号化されたクラウドバックアップでデバイス間のハイライトを同期します。データはアップロード前にこのデバイスで暗号化され、同期コードだけが復号の手段です。"
+  "siteRulesModeLabel": {
+    "message": "Highlighting sites"
   },
-  "cloudSyncGenerateCode": {
-    "message": "新しいコードを生成"
+  "siteRulesModeAll": {
+    "message": "All websites"
   },
-  "cloudSyncPairCodePlaceholder": {
-    "message": "他のデバイスの同期コードを入力"
+  "siteRulesModeAllowlist": {
+    "message": "Allowlisted sites only"
   },
-  "cloudSyncPairCodeButton": {
-    "message": "接続"
+  "siteRulesModeAllHelp": {
+    "message": "Highlighting runs on every ordinary http and https page."
   },
-  "cloudSyncInvalidCode": {
-    "message": "同期コードが正しくないようです。確認してもう一度お試しください。"
+  "siteRulesModeAllowlistHelp": {
+    "message": "Highlighting runs only on the sites listed below. Pages you are not allowed to highlight keep the highlights you already saved there."
   },
-  "cloudSyncYourCode": {
-    "message": "あなたの同期コード"
+  "siteRulesEmptyAllowlist": {
+    "message": "The allowlist is empty, so highlighting is switched off everywhere. Add a site to turn it back on."
   },
-  "cloudSyncSaveCodeWarning": {
-    "message": "このコードは安全な場所に保管してください。紛失するとデータを復元できません。"
+  "siteRulesCount": {
+    "message": "$1 site(s) in the list"
   },
-  "cloudSyncCopyCode": {
-    "message": "コピー"
+  "siteRulesSearchPlaceholder": {
+    "message": "Search sites"
   },
-  "cloudSyncShowCode": {
-    "message": "表示"
+  "siteRulesAddPlaceholder": {
+    "message": "example.org or https://example.org/page"
   },
-  "cloudSyncHideCode": {
-    "message": "非表示"
+  "siteRulesAddButton": {
+    "message": "Add site"
   },
-  "cloudSyncCodeCopied": {
-    "message": "コピーしました！"
+  "siteRulesIncludeSubdomains": {
+    "message": "Include subdomains"
   },
-  "cloudSyncCopyFailed": {
-    "message": "自動コピーに失敗しました。コードが上に表示されていますので、手動でコピーしてください。"
+  "siteRulesExactExample": {
+    "message": "Exact hostname, for example arxiv.org"
   },
-  "cloudSyncEnabledLabel": {
-    "message": "クラウド同期"
+  "siteRulesSubdomainExample": {
+    "message": "With subdomains, www.arxiv.org also matches"
   },
-  "cloudSyncNowButton": {
-    "message": "今すぐ同期"
+  "siteRulesRemove": {
+    "message": "Remove"
   },
-  "cloudSyncSyncing": {
-    "message": "同期中..."
+  "siteRulesNoSites": {
+    "message": "No sites in the list yet."
   },
-  "cloudSyncNeverSynced": {
-    "message": "まだ同期されていません"
+  "siteRulesNoMatches": {
+    "message": "No sites match your search."
   },
-  "cloudSyncLastSyncedPrefix": {
-    "message": "最終同期: "
+  "siteRulesInvalidHostname": {
+    "message": "Enter a website address such as example.org."
   },
-  "cloudSyncErrorPrefix": {
-    "message": "同期エラー: "
+  "siteRulesSaved": {
+    "message": "Site rules saved."
   },
-  "cloudSyncResetButton": {
-    "message": "コードを削除"
+  "siteRulesError": {
+    "message": "Could not save the site rules."
   },
-  "cloudSyncResetConfirm": {
-    "message": "このデバイスの接続を解除し、同期コードを完全に削除します。続行しますか？"
+  "currentSiteLabel": {
+    "message": "This site"
   },
-  "cloudSyncPagesExcludedNotice": {
-    "message": "（サイズ制限のため古いページを$1件除外しました）",
-    "description": "Appended to the last-synced status when the oldest pages were dropped from the cloud sync upload to fit the size limit. $1 is the number of excluded pages."
+  "siteStatusEnabled": {
+    "message": "Highlighting enabled"
+  },
+  "siteStatusDisabled": {
+    "message": "Highlighting disabled"
+  },
+  "siteStatusUnsupported": {
+    "message": "This page cannot be highlighted"
+  },
+  "siteModeAllNote": {
+    "message": "All websites mode"
+  },
+  "siteModeAllowlistNote": {
+    "message": "Allowlist mode"
+  },
+  "siteEnableButton": {
+    "message": "Enable highlighting on this site"
+  },
+  "siteRemoveButton": {
+    "message": "Remove from allowlist"
+  },
+  "siteRemovedNote": {
+    "message": "Removed from the allowlist. Your saved highlights are kept."
+  },
+  "siteEnabledNote": {
+    "message": "Highlighting is now enabled on this site."
+  },
+  "siteNeedsRefresh": {
+    "message": "Reload this page to start highlighting here."
+  },
+  "siteRefreshButton": {
+    "message": "Reload page"
+  },
+  "siteActionFailed": {
+    "message": "Could not change the site rules."
+  },
+  "siteNotAllowedError": {
+    "message": "Highlighting is not enabled on this site."
+  },
+  "contextMenuEnableSite": {
+    "message": "Enable highlighting on this site"
+  },
+  "contextMenuRemoveSite": {
+    "message": "Remove from allowlist"
+  },
+  "siteSubdomainsBadge": {
+    "message": "Includes subdomains"
+  },
+  "siteExactBadge": {
+    "message": "Exact hostname"
   },
   "jumpToHighlight": {
     "message": "ページ内のハイライト位置へ移動"
@@ -451,9 +499,271 @@
   "popupGuideLink": {
     "message": "使い方を詳しく見る"
   },
-  "copyPageHighlightsLabel": { "message": "このページのすべてのハイライトをコピー" },
-  "copyPageHighlightsSuccess": { "message": "このページのハイライト$1件をコピーしました。" },
-  "copySearchResultsLabel": { "message": "検索結果に一致するハイライトのみをコピー" },
-  "copySearchResultsSuccess": { "message": "一致するハイライト$1件をコピーしました。" },
-  "copyHighlightsFailed": { "message": "ハイライトをコピーできませんでした。もう一度お試しください。" }
+  "copyPageHighlightsLabel": {
+    "message": "このページのすべてのハイライトをコピー"
+  },
+  "copyPageHighlightsSuccess": {
+    "message": "このページのハイライト$1件をコピーしました。"
+  },
+  "copySearchResultsLabel": {
+    "message": "検索結果に一致するハイライトのみをコピー"
+  },
+  "copySearchResultsSuccess": {
+    "message": "一致するハイライト$1件をコピーしました。"
+  },
+  "copyHighlightsFailed": {
+    "message": "ハイライトをコピーできませんでした。もう一度お試しください。"
+  },
+  "backupSection": {
+    "message": "Backup & Restore"
+  },
+  "backupDestinationLabel": {
+    "message": "Backup destination"
+  },
+  "backupDestNone": {
+    "message": "None (disabled)"
+  },
+  "backupDestGist": {
+    "message": "GitHub Gist"
+  },
+  "backupDestWebdav": {
+    "message": "WebDAV"
+  },
+  "backupGistTitle": {
+    "message": "GitHub Gist Settings"
+  },
+  "backupGistTokenLabel": {
+    "message": "Personal access token"
+  },
+  "backupGistTokenPlaceholder": {
+    "message": "ghp_..."
+  },
+  "backupTokenSavedPlaceholder": {
+    "message": "•••••••• (saved)"
+  },
+  "backupGistIdLabel": {
+    "message": "Gist ID (optional)"
+  },
+  "backupGistIdPlaceholder": {
+    "message": "Leave empty to create a new Gist"
+  },
+  "backupGistIdHelp": {
+    "message": "Leave empty to automatically create a private Gist on the first backup."
+  },
+  "backupGistFilenameLabel": {
+    "message": "Filename"
+  },
+  "backupGistFilenamePlaceholder": {
+    "message": "marks-backup.json"
+  },
+  "backupWebdavTitle": {
+    "message": "WebDAV Settings"
+  },
+  "backupWebdavUrlLabel": {
+    "message": "Server URL"
+  },
+  "backupWebdavUrlPlaceholder": {
+    "message": "https://example.com/remote.php/dav/files/user/"
+  },
+  "backupWebdavUsernameLabel": {
+    "message": "Username"
+  },
+  "backupWebdavUsernamePlaceholder": {
+    "message": "Username"
+  },
+  "backupWebdavPasswordLabel": {
+    "message": "Password"
+  },
+  "backupWebdavPasswordPlaceholder": {
+    "message": "Password"
+  },
+  "backupPasswordSavedPlaceholder": {
+    "message": "•••••••• (saved)"
+  },
+  "backupWebdavInsecureLabel": {
+    "message": "Allow plain HTTP"
+  },
+  "backupWebdavInsecureWarning": {
+    "message": "Warning: Plain HTTP sends your recovery key and data unencrypted over the local network."
+  },
+  "backupSaveConfigBtn": {
+    "message": "Save"
+  },
+  "backupTestConnectionBtn": {
+    "message": "Test connection"
+  },
+  "backupConfigSaved": {
+    "message": "Backup settings saved."
+  },
+  "backupTestSuccess": {
+    "message": "Connection test succeeded."
+  },
+  "backupRecoverySectionTitle": {
+    "message": "Recovery Code"
+  },
+  "backupRecoveryCodeHelp": {
+    "message": "Your recovery code encrypts your backups locally before upload. Losing this code makes existing backups unreadable."
+  },
+  "backupRecoveryCodeLabel": {
+    "message": "Current recovery code"
+  },
+  "backupCopyCodeBtn": {
+    "message": "Copy"
+  },
+  "backupRecoveryCodeCopied": {
+    "message": "Recovery code copied to clipboard."
+  },
+  "backupRegenerateCodeBtn": {
+    "message": "Regenerate code"
+  },
+  "backupConfirmRegenerateCode": {
+    "message": "Generating a new recovery code means older backups encrypted with the previous code can no longer be opened. Are you sure you want to proceed?"
+  },
+  "backupCodeRegenerated": {
+    "message": "New recovery code generated."
+  },
+  "backupCustomCodePlaceholder": {
+    "message": "Paste recovery code"
+  },
+  "backupUseCustomCodeBtn": {
+    "message": "Use an existing recovery code"
+  },
+  "backupCustomCodeSaved": {
+    "message": "Recovery code saved."
+  },
+  "backupNewRecoveryCodeNotice": {
+    "message": "Copy and keep this recovery code somewhere safe. If you ever lose this code, your encrypted backups cannot be recovered."
+  },
+  "backupAutoEnabledLabel": {
+    "message": "Automatic backup"
+  },
+  "backupAutoEnabledHelp": {
+    "message": "Automatically back up your data once a day when changes are detected."
+  },
+  "backupActionsTitle": {
+    "message": "Actions"
+  },
+  "backupNowBtn": {
+    "message": "Back up now"
+  },
+  "backupRestoreBtn": {
+    "message": "Restore from backup"
+  },
+  "backupExportLocalBtn": {
+    "message": "Export local backup"
+  },
+  "backupNothingChanged": {
+    "message": "Nothing has changed"
+  },
+  "backupSuccess": {
+    "message": "Backup completed successfully."
+  },
+  "backupRestoreConfirm": {
+    "message": "Remote backup contains $1 pages, $2 highlights, and $3 site rules. Restore this backup and replace your local data?"
+  },
+  "backupSafetySnapshotFailedConfirm": {
+    "message": "Could not create a safety snapshot before restoring. If you continue, your existing highlights cannot be recovered if anything fails. Continue restoring anyway?"
+  },
+  "backupRestoreSuccess": {
+    "message": "Backup restored successfully."
+  },
+  "backupRestoreSuccessWithSnapshot": {
+    "message": "Backup restored successfully. Safety snapshot saved to $1."
+  },
+  "backupExportSuccess": {
+    "message": "Local backup exported to $1."
+  },
+  "backupStatusTitle": {
+    "message": "Status"
+  },
+  "backupLastSuccessLabel": {
+    "message": "Last backup: $1"
+  },
+  "backupNeverRun": {
+    "message": "Never"
+  },
+  "backupStatusUpToDate": {
+    "message": "Up to date"
+  },
+  "backupStatusPending": {
+    "message": "Changes pending"
+  },
+  "backupLastErrorLabel": {
+    "message": "Last error: $1"
+  },
+  "backupErrorNotConfigured": {
+    "message": "Backup destination is not configured."
+  },
+  "backupErrorNoRecoveryCode": {
+    "message": "No recovery code is set."
+  },
+  "backupErrorAuthFailed": {
+    "message": "Authentication failed. Please check your token or password."
+  },
+  "backupErrorForbidden": {
+    "message": "Access forbidden. Check your permissions."
+  },
+  "backupErrorNotFound": {
+    "message": "Remote backup file was not found."
+  },
+  "backupErrorConflict": {
+    "message": "Remote backup conflict. The remote file was modified elsewhere."
+  },
+  "backupErrorDirectoryMissing": {
+    "message": "Target directory does not exist on the remote server."
+  },
+  "backupErrorTooLarge": {
+    "message": "Backup file is too large for the remote destination."
+  },
+  "backupErrorRateLimited": {
+    "message": "Request rate limit exceeded. Please try again later."
+  },
+  "backupErrorServerError": {
+    "message": "Remote server encountered an error."
+  },
+  "backupErrorNetwork": {
+    "message": "Network error occurred."
+  },
+  "backupErrorTimeout": {
+    "message": "Backup request timed out."
+  },
+  "backupErrorTls": {
+    "message": "Secure connection (TLS) error."
+  },
+  "backupErrorInsecureTransport": {
+    "message": "Insecure HTTP connection is not permitted."
+  },
+  "backupErrorCrossHostRedirect": {
+    "message": "Cross-host redirect blocked for security."
+  },
+  "backupErrorTruncated": {
+    "message": "Backup data was truncated or incomplete."
+  },
+  "backupErrorDecryptFailed": {
+    "message": "Decryption failed. The recovery code may be incorrect."
+  },
+  "backupErrorInvalidFormat": {
+    "message": "Invalid backup or recovery code format."
+  },
+  "backupErrorUnsupportedVersion": {
+    "message": "Unsupported backup version."
+  },
+  "backupErrorInsecureHttpBlocked": {
+    "message": "Plain HTTP is blocked. Enable allow HTTP or use HTTPS."
+  },
+  "backupErrorDownloadFailed": {
+    "message": "Failed to download remote backup."
+  },
+  "backupErrorSafetySnapshotFailed": {
+    "message": "Failed to create a local safety snapshot before restore."
+  },
+  "backupErrorStorageError": {
+    "message": "Storage error occurred while processing backup."
+  },
+  "backupErrorConfirmRequired": {
+    "message": "Confirmation is required to perform this action."
+  },
+  "backupErrorGeneric": {
+    "message": "Backup operation failed."
+  }
 }

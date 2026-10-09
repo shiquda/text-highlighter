@@ -1,5 +1,10 @@
 import chrome from '../mocks/chrome.js';
+import { SITE_MENU_ENABLE, SITE_MENU_REMOVE } from '../background/settings-service.js';
 import { initContextMenus } from '../background/context-menu.js';
+
+// A tab always has a URL once the `tabs` permission is declared, and the
+// handlers authorise every highlight against it.
+const PAGE_URL = 'https://example.com/article';
 
 // Default color values from settings-service (used to verify handler logic)
 const DEFAULT_COLORS = {
@@ -47,7 +52,7 @@ describe('context-menu', () => {
       const clickListener = getClickListener();
       await clickListener(
         { menuItemId: 'highlight-yellow', selectionText: 'selected text' },
-        { id: 42 },
+        { id: 42, url: PAGE_URL },
       );
 
       expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(42, {
@@ -59,14 +64,14 @@ describe('context-menu', () => {
 
     it('should NOT send a message for the parent "highlight-text" menu item', async () => {
       const clickListener = getClickListener();
-      await clickListener({ menuItemId: 'highlight-text', selectionText: 'hello' }, { id: 1 });
+      await clickListener({ menuItemId: 'highlight-text', selectionText: 'hello' }, { id: 1, url: PAGE_URL });
 
       expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
     });
 
     it('should NOT send a message for an unknown menu item id', async () => {
       const clickListener = getClickListener();
-      await clickListener({ menuItemId: 'highlight-unknown-color', selectionText: 'hi' }, { id: 1 });
+      await clickListener({ menuItemId: 'highlight-unknown-color', selectionText: 'hi' }, { id: 1, url: PAGE_URL });
 
       expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
     });
@@ -88,7 +93,7 @@ describe('context-menu', () => {
       ['command_slot_4',   DEFAULT_COLORS.pink],
       ['command_slot_5', DEFAULT_COLORS.orange],
     ])('should send highlight with correct color for command "%s"', async (command, expectedColor) => {
-      chrome.tabs.query.mockResolvedValueOnce([{ id: 99 }]);
+      chrome.tabs.query.mockResolvedValueOnce([{ id: 99, url: PAGE_URL }]);
       const commandListener = getCommandListener();
       await commandListener(command);
 
@@ -110,7 +115,7 @@ describe('context-menu', () => {
       ['navigate_next_highlight', 'next'],
       ['navigate_previous_highlight', 'previous'],
     ])('should ask the tab to jump for command "%s"', async (command, direction) => {
-      chrome.tabs.query.mockResolvedValueOnce([{ id: 42 }]);
+      chrome.tabs.query.mockResolvedValueOnce([{ id: 42, url: PAGE_URL }]);
       await getCommandListener()(command);
 
       expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
@@ -128,5 +133,66 @@ describe('context-menu', () => {
       expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
     });
 
+  });
+  // ===================================================================
+  // Site rules
+  // ===================================================================
+
+  describe('site rules', () => {
+    function getClickListener() {
+      return chrome.contextMenus.onClicked.addListener.mock.calls[0][0];
+    }
+
+    function getCommandListener() {
+      return chrome.commands.onCommand.addListener.mock.calls[0][0];
+    }
+
+    function useAllowlist(sites) {
+      chrome.storage.local.get.mockImplementation(() =>
+        Promise.resolve({ sitePolicy: { version: 1, mode: 'allowlist', sites } }));
+    }
+
+    it('enables the host of the page from the context menu', async () => {
+      useAllowlist([]);
+
+      await getClickListener()({ menuItemId: SITE_MENU_ENABLE }, { id: 7, url: PAGE_URL });
+
+      expect(chrome.storage.local.set).toHaveBeenCalledWith({
+        sitePolicy: expect.objectContaining({
+          mode: 'allowlist',
+          sites: [{ hostname: 'example.com', includeSubdomains: false }],
+        }),
+      });
+    });
+
+    it('removes the matching rule from the context menu, not the subdomain', async () => {
+      useAllowlist([{ hostname: 'example.com', includeSubdomains: true }]);
+
+      await getClickListener()({ menuItemId: SITE_MENU_REMOVE }, { id: 7, url: 'https://www.example.com/x' });
+
+      expect(chrome.storage.local.set).toHaveBeenCalledWith({
+        sitePolicy: expect.objectContaining({ sites: [] }),
+      });
+    });
+
+    it('refuses a colour highlight on a site the allowlist does not cover', async () => {
+      useAllowlist([]);
+
+      await getClickListener()(
+        { menuItemId: 'highlight-yellow', selectionText: 'selected text' },
+        { id: 42, url: PAGE_URL },
+      );
+
+      expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('refuses a shortcut highlight on a site the allowlist does not cover', async () => {
+      useAllowlist([]);
+      chrome.tabs.query.mockResolvedValueOnce([{ id: 99, url: PAGE_URL }]);
+
+      await getCommandListener()('command_slot_1');
+
+      expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+    });
   });
 });

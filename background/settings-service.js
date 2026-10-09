@@ -1,8 +1,14 @@
 import { browserAPI } from '../shared/browser-api.js';
 import { debugLog, errorLog } from '../shared/logger.js';
-import { broadcastToAllTabs, sendMessageToTab } from '../shared/tab-broadcast.js';
-import { STORAGE_KEYS, SYNC_KEYS } from '../constants/storage-keys.js';
-import { saveSettingsToSync } from './sync-service.js';
+import { sendMessageToTab } from '../shared/tab-broadcast.js';
+import { STORAGE_KEYS } from '../constants/storage-keys.js';
+import { SITE_MODES, buildMatchPatterns } from '../shared/site-rules.js';
+import { getSitePolicy, getActiveTabSiteStatus } from './site-rule-service.js';
+
+// Context menu ids the site rules own. The click handler in context-menu.js
+// matches on these, so they are named here rather than spelled out twice.
+export const SITE_MENU_ENABLE = 'marks-site-enable';
+export const SITE_MENU_REMOVE = 'marks-site-remove';
 
 const COLORS = [
   { id: 'yellow', nameKey: 'yellowColor', color: '#FFFF00' },
@@ -154,7 +160,6 @@ export function getShortcutColorMap() {
 export async function saveShortcutColorMap(newMap) {
   shortcutColorMap = { ...newMap };
   await browserAPI.storage.local.set({ [STORAGE_KEYS.SHORTCUT_COLOR_MAP]: shortcutColorMap });
-  await saveSettingsToSync();
 }
 
 async function loadShortcutColorMap() {
@@ -174,6 +179,16 @@ export async function getCurrentShortcuts() {
   return shortcuts;
 }
 
+async function createContextMenu(options) {
+  try {
+    await browserAPI.contextMenus.create(options);
+  } catch (error) {
+    if (!error.message.includes('duplicate id')) {
+      debugLog('Error creating context menu:', options.id, error);
+    }
+  }
+}
+
 export async function createOrUpdateContextMenus() {
   if (isMobile() || !browserAPI.contextMenus) return;
   debugLog('Creating/updating context menus...');
@@ -185,43 +200,59 @@ export async function createOrUpdateContextMenus() {
     return;
   }
 
-  try {
-    await browserAPI.contextMenus.create({
-      id: 'highlight-text',
-      title: getMessage('highlightText'),
-      contexts: ['selection'],
-    });
-  } catch (error) {
-    if (!error.message.includes('duplicate id')) {
-      debugLog('Error creating main context menu:', error);
-    }
-  }
+  const policy = await getSitePolicy();
+  const patterns = buildMatchPatterns(policy);
+  const { status } = await getActiveTabSiteStatus();
+
+  // Both site items are always present, with the inapplicable one greyed rather
+  // than absent, so the menu does not reshuffle itself under the cursor.
+  await createContextMenu({
+    id: SITE_MENU_ENABLE,
+    title: getMessage('contextMenuEnableSite'),
+    contexts: ['page'],
+    enabled: Boolean(status && status.supported && status.mode === SITE_MODES.ALLOWLIST && !status.allowed),
+  });
+  await createContextMenu({
+    id: SITE_MENU_REMOVE,
+    title: getMessage('contextMenuRemoveSite'),
+    contexts: ['page'],
+    enabled: Boolean(status && status.matchedRule),
+  });
 
   const commandShortcuts = await getCurrentShortcuts();
   storedShortcuts = { ...commandShortcuts };
 
-  for (const color of currentColors) {
-    const slotName = Object.keys(shortcutColorMap).find(key => shortcutColorMap[key] === color.id);
-    const shortcutDisplay = (slotName && commandShortcuts[slotName]) || '';
+  // An empty allowlist matches nothing, so there is no page to offer a colour
+  // on and the items are left off entirely. On every other page the pattern
+  // list is what keeps the colour items out of the menu where the user is not
+  // allowed to highlight; the background refuses the write as well, because a
+  // menu is not an authorization check.
+  if (patterns.length > 0) {
+    await createContextMenu({
+      id: 'highlight-text',
+      title: getMessage('highlightText'),
+      contexts: ['selection'],
+      documentUrlPatterns: patterns,
+    });
 
-    let title;
-    if (color.customName) {
-      title = `${color.customName}${shortcutDisplay}`;
-    } else {
-      title = `${getColorDisplayName(color)}${shortcutDisplay}`;
-    }
+    for (const color of currentColors) {
+      const slotName = Object.keys(shortcutColorMap).find(key => shortcutColorMap[key] === color.id);
+      const shortcutDisplay = (slotName && commandShortcuts[slotName]) || '';
 
-    try {
-      await browserAPI.contextMenus.create({
+      let title;
+      if (color.customName) {
+        title = `${color.customName}${shortcutDisplay}`;
+      } else {
+        title = `${getColorDisplayName(color)}${shortcutDisplay}`;
+      }
+
+      await createContextMenu({
         id: `highlight-${color.id}`,
         parentId: 'highlight-text',
         title,
         contexts: ['selection'],
+        documentUrlPatterns: patterns,
       });
-    } catch (error) {
-      if (!error.message.includes('duplicate id')) {
-        debugLog('Error creating color context menu:', error);
-      }
     }
   }
 
@@ -229,22 +260,8 @@ export async function createOrUpdateContextMenus() {
 }
 
 async function loadCustomColorsFromStorage() {
-  let customColors = [];
-  try {
-    const syncResult = await browserAPI.storage.sync.get(SYNC_KEYS.SETTINGS);
-    if (syncResult[SYNC_KEYS.SETTINGS] && syncResult[SYNC_KEYS.SETTINGS].customColors) {
-      customColors = syncResult[SYNC_KEYS.SETTINGS].customColors;
-      await browserAPI.storage.local.set({ customColors });
-      debugLog('Loaded custom colors from storage.sync');
-    }
-  } catch (e) {
-    debugLog('Failed to read sync settings, falling back to local:', e.message);
-  }
-
-  if (customColors.length === 0) {
-    const result = await browserAPI.storage.local.get([STORAGE_KEYS.CUSTOM_COLORS]);
-    customColors = result.customColors || [];
-  }
+  const result = await browserAPI.storage.local.get([STORAGE_KEYS.CUSTOM_COLORS]);
+  const customColors = result.customColors || [];
 
   const { needsUpdate } = sanitizeCustomColors(customColors);
   currentColors = [...COLORS];
@@ -334,7 +351,6 @@ export async function updateCustomColorName(id, newName) {
   const globalIdx = currentColors.findIndex(c => c.id === id);
   if (globalIdx !== -1) currentColors[globalIdx] = { ...currentColors[globalIdx], customName: finalName };
 
-  await saveSettingsToSync();
   return { exists: false, colors: currentColors };
 }
 
@@ -358,7 +374,6 @@ export async function updateCustomColor(id, newColorValue) {
   const globalIdx = currentColors.findIndex(c => c.id === id);
   if (globalIdx !== -1) currentColors[globalIdx] = { ...currentColors[globalIdx], color: newColorValue };
 
-  await saveSettingsToSync();
   return { exists: false, colors: currentColors };
 }
 
@@ -374,7 +389,6 @@ export async function removeCustomColor(id) {
   await browserAPI.storage.local.set({ customColors });
   currentColors = currentColors.filter(c => c.id !== id);
 
-  await saveSettingsToSync();
   return { colors: currentColors };
 }
 
@@ -406,7 +420,6 @@ export async function addCustomColor(newColorValue) {
   await browserAPI.storage.local.set({ customColors });
   debugLog('Added custom color:', newColorObj);
 
-  await saveSettingsToSync();
   return { exists: false, colors: currentColors };
 }
 
@@ -428,7 +441,6 @@ export async function clearCustomColors() {
   currentColors = currentColors.filter(c => !c.id.startsWith('custom_'));
   debugLog('Cleared all custom colors');
 
-  await saveSettingsToSync();
   return { hadColors: true, colors: currentColors };
 }
 
@@ -456,56 +468,4 @@ export async function broadcastSettingsToTabs(changedSettings) {
       });
     }
   }
-}
-
-/**
- * Apply settings received from sync storage on another device.
- * @returns {{ colorsChanged: boolean }}
- */
-export async function applySettingsFromSync(newSettings) {
-  let colorsChanged = false;
-
-  if (newSettings.customColors) {
-    await settleLoadBeforeChange();
-    const customColors = newSettings.customColors.map(color => ({ ...color }));
-    sanitizeCustomColors(customColors);
-    await browserAPI.storage.local.set({ customColors });
-    currentColors = [...COLORS];
-    customColors.forEach(c => {
-      if (!currentColors.some(existing => existing.color.toLowerCase() === c.color.toLowerCase())) {
-        currentColors.push(c);
-      }
-    });
-    await broadcastToAllTabs({ action: 'colorsUpdated', colors: currentColors });
-    colorsChanged = true;
-  }
-
-  if (newSettings.minimapVisible !== undefined) {
-    await browserAPI.storage.local.set({ minimapVisible: newSettings.minimapVisible });
-    await broadcastToAllTabs({ action: 'setMinimapVisibility', visible: newSettings.minimapVisible });
-  }
-
-  if (newSettings.selectionControlsVisible !== undefined) {
-    await browserAPI.storage.local.set({ selectionControlsVisible: newSettings.selectionControlsVisible });
-    await broadcastToAllTabs({ action: 'setSelectionControlsVisibility', visible: newSettings.selectionControlsVisible });
-  }
-
-  if (newSettings.oneClickHighlightEnabled !== undefined) {
-    await browserAPI.storage.local.set({ oneClickHighlightEnabled: newSettings.oneClickHighlightEnabled });
-    await broadcastToAllTabs({ action: 'setOneClickHighlight', enabled: newSettings.oneClickHighlightEnabled });
-  }
-
-  // `null` is a value here ("no custom mapping"), not an absent field, so it has to be
-  // adopted like any other. Skipping it leaves this device's own map in place while
-  // runCloudSync still stamps the sender's settings timestamp onto it — two devices then
-  // claim the same timestamp while disagreeing on content, and push at each other on every
-  // sync cycle. Storage keeps the null so buildLocalBlob reads it back as null and both
-  // sides converge; the in-memory copy falls back to the defaults the way
-  // loadShortcutColorMap does, because callers index into it directly.
-  if (newSettings.shortcutColorMap !== undefined) {
-    await browserAPI.storage.local.set({ [STORAGE_KEYS.SHORTCUT_COLOR_MAP]: newSettings.shortcutColorMap });
-    shortcutColorMap = newSettings.shortcutColorMap || { ...DEFAULT_SHORTCUT_COLOR_MAP };
-  }
-
-  return { colorsChanged };
 }

@@ -1,3 +1,4 @@
+let pageDisabled = false;
 let highlights = [];
 let currentUrl = window.location.href.replace(/#selection-[\d.]+-[\d.]+$/, '');
 
@@ -134,7 +135,7 @@ function handleUrlChange(nextUrl, trigger = 'unknown') {
   }, 1000);
 }
 
-window.addEventListener('message', (event) => {
+function handleNavigationBridgeMessage(event) {
   if (event.source !== window) return;
 
   const data = event.data;
@@ -151,7 +152,9 @@ window.addEventListener('message', (event) => {
   }
 
   handleUrlChange(data.href, data.trigger);
-});
+}
+
+window.addEventListener('message', handleNavigationBridgeMessage);
 
 injectNavigationBridge();
 
@@ -174,8 +177,17 @@ getColorsFromBackground().then(() => {
 // Event listener is now combined below to handle both highlight and selection controls
 
 // Handle messages received from background
-browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'highlight') {
+function handleRuntimeMessage(message, sender, sendResponse) {
+  if (pageDisabled) {
+    return;
+  }
+
+  if (message.action === 'siteDisabled') {
+    teardownContentScript();
+    sendResponse({ success: true });
+    return true;
+  }
+  else if (message.action === 'highlight') {
     highlightSelectedText(message.color);
     sendResponse({ success: true });
   }
@@ -264,7 +276,48 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     return true;
   }
-});
+}
+
+browserAPI.runtime.onMessage.addListener(handleRuntimeMessage);
+
+window.__marksLocalContentReady = true;
+
+function teardownContentScript() {
+  pageDisabled = true;
+
+  // The page-world navigation bridge leaves history monkey-patched in the page's
+  // closure, which cannot be undone from here once its script element has detached.
+  // Leaving it running is safe because removing our message listener ignores any
+  // events it emits.
+  window.removeEventListener('message', handleNavigationBridgeMessage);
+
+  if (typeof browserAPI?.runtime?.onMessage?.removeListener === 'function') {
+    browserAPI.runtime.onMessage.removeListener(handleRuntimeMessage);
+  }
+
+  if (window.TextHighlighterControls && typeof window.TextHighlighterControls.teardown === 'function') {
+    window.TextHighlighterControls.teardown();
+  }
+
+  if (minimapManager) {
+    minimapManager.destroy();
+    minimapManager = null;
+  }
+
+  if (pendingNavigationRestoreTimer) {
+    clearTimeout(pendingNavigationRestoreTimer);
+    pendingNavigationRestoreTimer = null;
+  }
+  clearRestoreRetryTimeout();
+  clearRestorePending();
+
+  // Already-rendered highlight spans stay in place so the reader's view is not
+  // disrupted. Their per-span click handlers guard on pageDisabled so they no
+  // longer open controls.
+
+  window.__marksLocalContentReady = false;
+  window.__marksLocalContentDisabled = true;
+}
 
 // Reading-order list of the highlight groups on the page, each placed at its
 // first visible span. Spans that render no box (hidden, collapsed) cannot be
@@ -337,6 +390,7 @@ async function getColorsFromBackground() {
 }
 
 async function loadHighlights() {
+  if (pageDisabled) return;
   debugLog('Loading highlights for URL:', currentUrl);
   const requestUrl = currentUrl;
 
@@ -468,6 +522,7 @@ function rememberLastUsedColor(color) {
 }
 
 function changeHighlightColor(highlightElement, newColor) {
+  if (pageDisabled) return;
   if (!highlightElement) return;
   rememberLastUsedColor(newColor);
   const groupId = highlightElement.dataset.groupId;
@@ -495,6 +550,7 @@ function clearAllHighlights() {
 
 // Helper to apply highlight from a DOM Range
 function applyHighlightFromRange(range, color, groupId) {
+  if (pageDisabled) return false;
   try {
     const convertedRange = convertSelectionRange(range);
     const highlightSpans = processSelectionRange(convertedRange, color, groupId);
@@ -759,6 +815,7 @@ function scheduleSingleRestoreRetry(failedGroups) {
 
 // Apply highlights to the page using saved highlight information
 function applyHighlights() {
+  if (pageDisabled) return;
   debugLog('Applying highlights, count:', highlights.length);
 
   clearRestoreRetryTimeout();
@@ -947,6 +1004,7 @@ function highlightTextInDocument(element, spanInfos, color, groupId, batch = nul
 // Add event listeners to highlighted text elements
 function addHighlightEventListeners(highlightElement) {
   highlightElement.addEventListener('click', function (e) {
+    if (pageDisabled) return;
     if (activeHighlightElement === highlightElement &&
       highlightControlsContainer &&
       highlightControlsContainer.style.display !== 'none') {
@@ -1021,14 +1079,15 @@ function getFirstTextNodePosition(element) {
 }
 
 function initMinimap() {
+  if (pageDisabled) return;
   browserAPI.storage.local.get(['minimapVisible'], (result) => {
     const minimapVisible = result.minimapVisible !== undefined ? result.minimapVisible : true;
 
     if (!minimapManager) {
-      minimapManager = new MinimapManager();
+      const ManagerClass = window.MinimapManager || MinimapManager;
+      minimapManager = new ManagerClass();
       minimapManager.init();
     }
-
     minimapManager.setVisibility(minimapVisible);
 
     minimapManager.updateMarkers();
@@ -1038,6 +1097,7 @@ function initMinimap() {
 }
 
 function updateMinimapMarkers() {
+  if (pageDisabled) return;
   if (minimapManager) {
     minimapManager.updateMarkers();
   }
@@ -1104,6 +1164,7 @@ function createVisibilityResolver() {
 
 // Refactored highlightSelectedText function with tree traversal algorithm
 function highlightSelectedText(color) {
+  if (pageDisabled) return;
   const selection = window.getSelection();
   const selectedText = selection.toString();
   if (selectedText.trim() === '') return;
@@ -1217,6 +1278,7 @@ function mergeSelectionIntoHighlights(range, groupIds, color) {
 
 // Wrap `range` in a new group, save it, and report whether anything was created.
 function createHighlightGroup(convertedRange, color, selectedText, { deletedGroupIds = [] } = {}) {
+  if (pageDisabled) return false;
   try {
     const groupId = Date.now().toString();
 
@@ -1288,6 +1350,7 @@ function createHighlightGroup(convertedRange, color, selectedText, { deletedGrou
  * @returns {Array} Array of created highlight spans
  */
 function processSelectionRange(range, color, groupId) {
+  if (pageDisabled) return [];
   if (!contentCore || typeof contentCore.processSelectionRange !== 'function') {
     return [];
   }

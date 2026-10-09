@@ -53,7 +53,7 @@ function decodeCrockfordBase32(input) {
   for (const ch of normalized) {
     const idx = CROCKFORD_ALPHABET.indexOf(ch);
     if (idx === -1) {
-      throw new Error(`Invalid sync code character: ${ch}`);
+      throw new Error(`Invalid code character: ${ch}`);
     }
     value = (value << 5) | idx;
     bits += 5;
@@ -82,7 +82,30 @@ export function generateSyncCode() {
   return groupForDisplay(encodeCrockfordBase32(bytes));
 }
 
-function bytesToBase64(bytes) {
+/**
+ * Generate a new random recovery code (256bit), formatted for display/copying.
+ */
+export function generateRecoveryCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(SYNC_CODE_BYTE_LENGTH));
+  return groupForDisplay(encodeCrockfordBase32(bytes));
+}
+
+/**
+ * Normalize a user-entered recovery code into canonical grouped display form.
+ * Folds confusing characters (O->0, I/L->1), strips separators, and validates length.
+ */
+export function normalizeRecoveryCode(code) {
+  if (typeof code !== 'string') {
+    throw new Error('Recovery code must be a string');
+  }
+  const bytes = decodeCrockfordBase32(code);
+  if (bytes.length !== SYNC_CODE_BYTE_LENGTH) {
+    throw new Error('Invalid recovery code length');
+  }
+  return groupForDisplay(encodeCrockfordBase32(bytes));
+}
+
+export function bytesToBase64(bytes) {
   const CHUNK_SIZE = 0x8000;
   let binary = '';
   for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
@@ -91,7 +114,7 @@ function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
-function base64ToBytes(base64) {
+export function base64ToBytes(base64) {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
@@ -109,31 +132,50 @@ function toHex(bytes) {
  * Both values are deterministic: entering the same code on another device
  * yields identical results without any server round-trip.
  */
-export async function deriveSyncKeys(syncCode) {
-  const codeBytes = decodeCrockfordBase32(syncCode);
+export async function deriveKeysFromCode(code, { encryptionInfo, keyIdInfo } = {}) {
+  const codeBytes = decodeCrockfordBase32(code);
   if (codeBytes.length !== SYNC_CODE_BYTE_LENGTH) {
-    throw new Error('Invalid sync code length');
+    throw new Error('Invalid code length');
   }
 
   const baseKey = await crypto.subtle.importKey(
     'raw', codeBytes, 'HKDF', false, ['deriveKey', 'deriveBits']
   );
 
+  const encInfoBytes = typeof encryptionInfo === 'string'
+    ? textEncoder.encode(encryptionInfo)
+    : (encryptionInfo || new Uint8Array(0));
+
   const encryptionKey = await crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: textEncoder.encode(HKDF_INFO_ENCRYPT) },
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: encInfoBytes },
     baseKey,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt']
   );
 
-  const keyIdBits = await crypto.subtle.deriveBits(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: textEncoder.encode(HKDF_INFO_KEYID) },
-    baseKey,
-    128
-  );
+  let keyId = null;
+  if (keyIdInfo) {
+    const keyIdInfoBytes = typeof keyIdInfo === 'string'
+      ? textEncoder.encode(keyIdInfo)
+      : keyIdInfo;
 
-  return { encryptionKey, keyId: toHex(new Uint8Array(keyIdBits)) };
+    const keyIdBits = await crypto.subtle.deriveBits(
+      { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: keyIdInfoBytes },
+      baseKey,
+      128
+    );
+    keyId = toHex(new Uint8Array(keyIdBits));
+  }
+
+  return { encryptionKey, keyId };
+}
+
+export async function deriveSyncKeys(syncCode) {
+  return deriveKeysFromCode(syncCode, {
+    encryptionInfo: HKDF_INFO_ENCRYPT,
+    keyIdInfo: HKDF_INFO_KEYID,
+  });
 }
 
 /**

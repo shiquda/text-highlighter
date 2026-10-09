@@ -358,4 +358,310 @@ describe('popup', () => {
       );
     });
   });
+
+  describe('current-site status and rules', () => {
+    it('renders unsupported state when page is not highlightable', async () => {
+      chrome.tabs.query.mockResolvedValue([{ id: 9, url: 'chrome://extensions' }]);
+      chrome.runtime.sendMessage.mockImplementation(async message => {
+        if (message.action === 'getSiteStatus') {
+          return {
+            success: true,
+            status: {
+              supported: false,
+              allowed: false,
+              hostname: null,
+              mode: 'all',
+              matchedRule: null,
+              reason: 'unsupported-url',
+            },
+          };
+        }
+        return { success: true };
+      });
+
+      await openPopup();
+      await advance();
+
+      expect(document.getElementById('site-hostname').textContent).toBe('chrome');
+      expect(document.getElementById('site-status').textContent).toBe('siteStatusUnsupported');
+      expect(document.getElementById('site-toggle-btn').style.display).toBe('none');
+      expect(document.getElementById('site-refresh-btn').style.display).toBe('none');
+    });
+
+    it('renders enabled state without toggle button when mode is all', async () => {
+      chrome.runtime.sendMessage.mockImplementation(async message => {
+        if (message.action === 'getSiteStatus') {
+          return {
+            success: true,
+            status: {
+              supported: true,
+              allowed: true,
+              hostname: 'example.com',
+              mode: 'all',
+              matchedRule: null,
+              reason: 'mode-all',
+            },
+          };
+        }
+        return { success: true };
+      });
+
+      await openPopup();
+      await advance();
+
+      expect(document.getElementById('site-hostname').textContent).toBe('example.com');
+      expect(document.getElementById('site-status').textContent).toBe('siteStatusEnabled');
+      expect(document.getElementById('site-mode-note').textContent).toBe('siteModeAllNote');
+      expect(document.getElementById('site-toggle-btn').style.display).toBe('none');
+    });
+
+    it('renders disabled state with primary enable button when site is not allowlisted', async () => {
+      chrome.runtime.sendMessage.mockImplementation(async message => {
+        if (message.action === 'getSiteStatus') {
+          return {
+            success: true,
+            status: {
+              supported: true,
+              allowed: false,
+              hostname: 'example.com',
+              mode: 'allowlist',
+              matchedRule: null,
+              reason: 'not-listed',
+            },
+          };
+        }
+        return { success: true };
+      });
+
+      await openPopup();
+      await advance();
+
+      expect(document.getElementById('site-hostname').textContent).toBe('example.com');
+      expect(document.getElementById('site-status').textContent).toBe('siteStatusDisabled');
+      expect(document.getElementById('site-mode-note').textContent).toBe('siteModeAllowlistNote');
+      const btn = document.getElementById('site-toggle-btn');
+      expect(btn.style.display).not.toBe('none');
+      expect(btn.classList.contains('btn-primary')).toBe(true);
+      expect(btn.textContent).toBe('siteEnableButton');
+    });
+
+    it('renders enabled state with remove button when site is allowlisted', async () => {
+      chrome.runtime.sendMessage.mockImplementation(async message => {
+        if (message.action === 'getSiteStatus') {
+          return {
+            success: true,
+            status: {
+              supported: true,
+              allowed: true,
+              hostname: 'example.com',
+              mode: 'allowlist',
+              matchedRule: { hostname: 'example.com', includeSubdomains: false },
+              reason: 'matched',
+            },
+          };
+        }
+        return { success: true };
+      });
+
+      await openPopup();
+      await advance();
+
+      expect(document.getElementById('site-hostname').textContent).toBe('example.com');
+      expect(document.getElementById('site-status').textContent).toBe('siteStatusEnabled');
+      expect(document.getElementById('site-mode-note').textContent).toBe('siteModeAllowlistNote');
+      const btn = document.getElementById('site-toggle-btn');
+      expect(btn.style.display).not.toBe('none');
+      expect(btn.classList.contains('btn-primary')).toBe(false);
+      expect(btn.textContent).toBe('siteRemoveButton');
+    });
+
+    it('clicking enable button sends addSiteRule and re-renders as enabled', async () => {
+      let isAllowed = false;
+      chrome.runtime.sendMessage.mockImplementation(async message => {
+        if (message.action === 'getSiteStatus') {
+          return {
+            success: true,
+            status: {
+              supported: true,
+              allowed: isAllowed,
+              hostname: 'example.com',
+              mode: 'allowlist',
+              matchedRule: isAllowed ? { hostname: 'example.com', includeSubdomains: false } : null,
+              reason: isAllowed ? 'matched' : 'not-listed',
+            },
+          };
+        }
+        if (message.action === 'addSiteRule') {
+          isAllowed = true;
+          return {
+            success: true,
+            added: true,
+            hostname: message.hostname,
+            needsRefresh: false,
+          };
+        }
+        return { success: true };
+      });
+
+      await openPopup();
+      await advance();
+
+      const btn = document.getElementById('site-toggle-btn');
+      expect(btn.textContent).toBe('siteEnableButton');
+
+      btn.click();
+      await advance();
+
+      const addCalls = chrome.runtime.sendMessage.mock.calls.filter(
+        ([msg]) => msg.action === 'addSiteRule'
+      );
+      expect(addCalls).toHaveLength(1);
+      expect(addCalls[0][0]).toEqual({
+        action: 'addSiteRule',
+        hostname: 'example.com',
+        includeSubdomains: false,
+      });
+
+      expect(document.getElementById('site-status').textContent).toBe('siteStatusEnabled');
+      expect(btn.textContent).toBe('siteRemoveButton');
+      expect(btn.classList.contains('btn-primary')).toBe(false);
+      expect(document.getElementById('site-note').textContent).toBe('siteEnabledNote');
+      expect(document.getElementById('site-refresh-btn').style.display).toBe('none');
+    });
+
+    it('shows reload button when needsRefresh is true and clicking it reloads tab', async () => {
+      let isAllowed = false;
+      chrome.runtime.sendMessage.mockImplementation(async message => {
+        if (message.action === 'getSiteStatus') {
+          return {
+            success: true,
+            status: {
+              supported: true,
+              allowed: isAllowed,
+              hostname: 'example.com',
+              mode: 'allowlist',
+              matchedRule: isAllowed ? { hostname: 'example.com', includeSubdomains: false } : null,
+              reason: isAllowed ? 'matched' : 'not-listed',
+            },
+          };
+        }
+        if (message.action === 'addSiteRule') {
+          isAllowed = true;
+          return {
+            success: true,
+            added: true,
+            hostname: message.hostname,
+            needsRefresh: true,
+          };
+        }
+        return { success: true };
+      });
+
+      await openPopup();
+      await advance();
+
+      const toggleBtn = document.getElementById('site-toggle-btn');
+      toggleBtn.click();
+      await advance();
+
+      expect(document.getElementById('site-note').textContent).toBe('siteNeedsRefresh');
+      const refreshBtn = document.getElementById('site-refresh-btn');
+      expect(refreshBtn.style.display).not.toBe('none');
+      expect(refreshBtn.textContent).toBe('siteRefreshButton');
+
+      refreshBtn.click();
+      await advance();
+
+      expect(chrome.tabs.reload).toHaveBeenCalledWith(TAB.id);
+      expect(closePopup).toHaveBeenCalled();
+    });
+
+    it('shows failure note and preserves button state when action fails', async () => {
+      chrome.runtime.sendMessage.mockImplementation(async message => {
+        if (message.action === 'getSiteStatus') {
+          return {
+            success: true,
+            status: {
+              supported: true,
+              allowed: false,
+              hostname: 'example.com',
+              mode: 'allowlist',
+              matchedRule: null,
+              reason: 'not-listed',
+            },
+          };
+        }
+        if (message.action === 'addSiteRule') {
+          return { success: false, error: 'Storage error' };
+        }
+        return { success: true };
+      });
+
+      await openPopup();
+      await advance();
+
+      const btn = document.getElementById('site-toggle-btn');
+      expect(btn.textContent).toBe('siteEnableButton');
+      expect(btn.classList.contains('btn-primary')).toBe(true);
+
+      btn.click();
+      await advance();
+
+      expect(document.getElementById('site-note').textContent).toBe('siteActionFailed');
+      expect(btn.textContent).toBe('siteEnableButton');
+      expect(btn.classList.contains('btn-primary')).toBe(true);
+      expect(document.getElementById('site-status').textContent).toBe('siteStatusDisabled');
+    });
+
+    it('clicking remove button sends removeSiteRule and re-renders as disabled', async () => {
+      let isAllowed = true;
+      chrome.runtime.sendMessage.mockImplementation(async message => {
+        if (message.action === 'getSiteStatus') {
+          return {
+            success: true,
+            status: {
+              supported: true,
+              allowed: isAllowed,
+              hostname: 'example.com',
+              mode: 'allowlist',
+              matchedRule: isAllowed ? { hostname: 'example.com', includeSubdomains: false } : null,
+              reason: isAllowed ? 'matched' : 'not-listed',
+            },
+          };
+        }
+        if (message.action === 'removeSiteRule') {
+          isAllowed = false;
+          return {
+            success: true,
+            removed: true,
+            hostname: message.hostname,
+          };
+        }
+        return { success: true };
+      });
+
+      await openPopup();
+      await advance();
+
+      const btn = document.getElementById('site-toggle-btn');
+      expect(btn.textContent).toBe('siteRemoveButton');
+
+      btn.click();
+      await advance();
+
+      const removeCalls = chrome.runtime.sendMessage.mock.calls.filter(
+        ([msg]) => msg.action === 'removeSiteRule'
+      );
+      expect(removeCalls).toHaveLength(1);
+      expect(removeCalls[0][0]).toEqual({
+        action: 'removeSiteRule',
+        hostname: 'example.com',
+      });
+
+      expect(document.getElementById('site-status').textContent).toBe('siteStatusDisabled');
+      expect(btn.textContent).toBe('siteEnableButton');
+      expect(btn.classList.contains('btn-primary')).toBe(true);
+      expect(document.getElementById('site-note').textContent).toBe('siteRemovedNote');
+    });
+  });
 });

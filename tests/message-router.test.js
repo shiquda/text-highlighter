@@ -1,21 +1,31 @@
 import { jest } from '@jest/globals';
 import chrome from '../mocks/chrome.js';
-import { STORAGE_KEYS, CLOUD_SYNC_KEYS } from '../constants/storage-keys.js';
+import { STORAGE_KEYS } from '../constants/storage-keys.js';
 
 const PAGE = 'https://example.com/article';
 const OTHER_PAGE = 'https://example.com/other';
 
+// What a content script's message looks like to the router. The tab URL is the
+// authority for every highlight write, so a sender without one is refused.
+const FROM_PAGE = { tab: { id: 4, url: PAGE, title: 'Article title' }, url: PAGE };
+
+// What a message from one of the extension's own pages looks like. It arrives
+// with a tab, exactly like a content script's does, so the sender URL is the
+// only thing that tells the two apart.
+const FROM_EXTENSION = {
+  id: 'marks-local@shiquda.github.io',
+  url: 'moz-extension://abcdefgh/settings.html',
+  tab: { id: 9, url: 'moz-extension://abcdefgh/settings.html' },
+};
+
 describe('message-router', () => {
   let send;
   let local;
-  let sync;
 
   beforeEach(async () => {
     jest.clearAllMocks();
     local = installStore(chrome.storage.local);
-    sync = installStore(chrome.storage.sync);
     chrome.tabs.query.mockResolvedValue([]);
-    global.fetch = jest.fn();
 
     send = await loadRouter();
   });
@@ -23,9 +33,9 @@ describe('message-router', () => {
   /**
    * Register a router built from a fresh module graph.
    *
-   * settings-service caches the custom colours it has loaded in module state,
-   * and the sync services keep their own. Without the reset one test's colours
-   * are still there for the next, and the order tests run in starts to matter.
+   * settings-service caches the custom colours it has loaded in module state.
+   * Without the reset one test's colours are still there for the next, and the
+   * order tests run in starts to matter.
    * `shared/browser-api.js` reads the `chrome` global, which the reset does not
    * replace, so the fresh graph still talks to the mock this file asserts on.
    */
@@ -94,7 +104,7 @@ describe('message-router', () => {
     it('returns a failure response for an unknown action', async () => {
       const result = await send({ action: 'doesNotExist' });
 
-      expect(result).toEqual({ success: false, error: expect.stringContaining('doesNotExist') });
+      expect(result).toMatchObject({ success: false, error: expect.stringContaining('doesNotExist') });
     });
 
     it('leaves a page-to-page refreshPagesList unanswered so the pages list can take it', () => {
@@ -112,7 +122,7 @@ describe('message-router', () => {
 
       const result = await send({ action: 'getHighlights', url: PAGE });
 
-      expect(result).toEqual({ success: false, error: 'storage is gone' });
+      expect(result).toMatchObject({ success: false, error: 'storage is gone' });
     });
   });
 
@@ -139,7 +149,7 @@ describe('message-router', () => {
 
   describe('getColors', () => {
     it('includes custom colors loaded from storage before returning', async () => {
-      sync.settings = { customColors: [{ id: 'custom_123', colorNumber: 1, color: '#123456' }] };
+      local[STORAGE_KEYS.CUSTOM_COLORS] = [{ id: 'custom_123', colorNumber: 1, color: '#123456' }];
 
       const result = await send({ action: 'getColors' });
 
@@ -213,22 +223,6 @@ describe('message-router', () => {
       expect(tabMessages('setOneClickHighlight')).toHaveLength(1);
     });
 
-    // The mirror to sync is deliberately not awaited: the local write has already
-    // happened, so a sync that fails must not turn into a failed save.
-    it('still reports success when the settings could not be mirrored to sync', async () => {
-      const store = chrome.storage.local.set.getMockImplementation();
-      chrome.storage.local.set.mockImplementation(async items => {
-        if (CLOUD_SYNC_KEYS.SETTINGS_UPDATED_AT in items) throw new Error('sync quota exceeded');
-        return store(items);
-      });
-
-      const result = await send({ action: 'saveSettings', minimapVisible: false });
-      await new Promise(resolve => setTimeout(resolve, 0));
-
-      expect(result).toEqual({ success: true });
-      expect(local.minimapVisible).toBe(false);
-    });
-
     it('succeeds without writing anything when the message carries no setting', async () => {
       const result = await send({ action: 'saveSettings' });
 
@@ -245,7 +239,7 @@ describe('message-router', () => {
     it('refuses a message with no color', async () => {
       const result = await send({ action: 'addColor' });
 
-      expect(result).toEqual({ success: false, error: 'No color value provided' });
+      expect(result).toMatchObject({ success: false, error: 'No color value provided' });
     });
 
     it('adds the color, rebuilds the menus and tells the tabs', async () => {
@@ -276,15 +270,15 @@ describe('message-router', () => {
   describe('updateCustomColor', () => {
     it('refuses a message missing the id or the color', async () => {
       expect(await send({ action: 'updateCustomColor', color: '#abcdef' }))
-        .toEqual({ success: false, error: 'Missing id or color' });
+        .toMatchObject({ success: false, error: 'Missing id or color' });
       expect(await send({ action: 'updateCustomColor', id: 'custom_1' }))
-        .toEqual({ success: false, error: 'Missing id or color' });
+        .toMatchObject({ success: false, error: 'Missing id or color' });
     });
 
     it('reports a color id that is not there', async () => {
       const result = await send({ action: 'updateCustomColor', id: 'custom_nope', color: '#abcdef' });
 
-      expect(result).toEqual({ success: false, error: 'Color not found' });
+      expect(result).toMatchObject({ success: false, error: 'Color not found' });
     });
 
     it('changes the color and tells the tabs', async () => {
@@ -304,15 +298,15 @@ describe('message-router', () => {
   describe('updateCustomColorName', () => {
     it('refuses a message missing the id or the name', async () => {
       expect(await send({ action: 'updateCustomColorName', name: 'Coral' }))
-        .toEqual({ success: false, error: 'Missing id or name' });
+        .toMatchObject({ success: false, error: 'Missing id or name' });
       expect(await send({ action: 'updateCustomColorName', id: 'custom_1' }))
-        .toEqual({ success: false, error: 'Missing id or name' });
+        .toMatchObject({ success: false, error: 'Missing id or name' });
     });
 
     it('reports a color id that is not there', async () => {
       const result = await send({ action: 'updateCustomColorName', id: 'custom_nope', name: 'Coral' });
 
-      expect(result).toEqual({ success: false, error: 'Color not found' });
+      expect(result).toMatchObject({ success: false, error: 'Color not found' });
     });
 
     it('renames the color and tells the tabs', async () => {
@@ -332,12 +326,12 @@ describe('message-router', () => {
   describe('removeCustomColor', () => {
     it('refuses a message with no id', async () => {
       expect(await send({ action: 'removeCustomColor' }))
-        .toEqual({ success: false, error: 'Missing id' });
+        .toMatchObject({ success: false, error: 'Missing id' });
     });
 
     it('reports a color id that is not there', async () => {
       expect(await send({ action: 'removeCustomColor', id: 'custom_nope' }))
-        .toEqual({ success: false, error: 'Color not found' });
+        .toMatchObject({ success: false, error: 'Color not found' });
     });
 
     it('removes the color and tells the tabs', async () => {
@@ -394,7 +388,7 @@ describe('message-router', () => {
 
     it('refuses a save with no map', async () => {
       expect(await send({ action: 'saveShortcutColorMap' }))
-        .toEqual({ success: false, error: 'Missing shortcutColorMap' });
+        .toMatchObject({ success: false, error: 'Missing shortcutColorMap' });
     });
 
     it('saves the map and rebuilds the menus', async () => {
@@ -417,10 +411,7 @@ describe('message-router', () => {
     it('stores the highlights and stamps the page metadata from the sending tab', async () => {
       const highlights = [{ groupId: 'g1', color: '#ffff00', text: 'hello' }];
 
-      const result = await send(
-        { action: 'saveHighlights', url: PAGE, highlights },
-        { tab: { id: 4, title: 'Article title' } }
-      );
+      const result = await send({ action: 'saveHighlights', url: PAGE, highlights }, FROM_PAGE);
 
       expect(result).toEqual({ success: true });
       expect(local[PAGE]).toEqual(highlights);
@@ -428,93 +419,60 @@ describe('message-router', () => {
       expect(meta(PAGE).lastUpdated).toEqual(expect.any(String));
     });
 
-    it('keeps the existing title when the message did not come from a tab', async () => {
-      local[`${PAGE}${STORAGE_KEYS.META_SUFFIX}`] = { title: 'Earlier title' };
-
-      await send({ action: 'saveHighlights', url: PAGE, highlights: [{ groupId: 'g1', color: '#ffff00' }] });
-
-      expect(meta(PAGE).title).toBe('Earlier title');
-    });
-
     it('clears the page instead of storing an empty list', async () => {
       local[PAGE] = [{ groupId: 'g1', color: '#ffff00' }];
       local[`${PAGE}${STORAGE_KEYS.META_SUFFIX}`] = { title: 'Article title' };
 
-      const result = await send({ action: 'saveHighlights', url: PAGE, highlights: [] });
+      const result = await send({ action: 'saveHighlights', url: PAGE, highlights: [] }, FROM_PAGE);
 
       expect(result).toEqual({ success: true });
       expect(local[PAGE]).toBeUndefined();
       expect(meta(PAGE)).toBeUndefined();
     });
-  });
 
-  describe('deleteHighlight', () => {
-    beforeEach(() => {
-      local[PAGE] = [
-        { groupId: 'g1', color: '#ffff00', text: 'first' },
-        { groupId: 'g2', color: '#80cbc4', text: 'second' },
-      ];
-      local[`${PAGE}${STORAGE_KEYS.META_SUFFIX}`] = { title: 'Article title' };
-    });
+    // A content script may put any url in the message, so the tab it came from
+    // is the only thing worth checking.
+    it('refuses a sender that is not a page', async () => {
+      const result = await send({
+        action: 'saveHighlights',
+        url: PAGE,
+        highlights: [{ groupId: 'g1', color: '#ffff00' }],
+      });
 
-    it('removes one group and keeps the rest', async () => {
-      const result = await send({ action: 'deleteHighlight', url: PAGE, groupId: 'g1' });
-
-      expect(result.highlights.map(group => group.groupId)).toEqual(['g2']);
-      expect(local[PAGE].map(group => group.groupId)).toEqual(['g2']);
-    });
-
-    it('records a tombstone so a later sync does not bring the group back', async () => {
-      await send({ action: 'deleteHighlight', url: PAGE, groupId: 'g1' });
-
-      expect(meta(PAGE).deletedGroupIds).toHaveProperty('g1');
-    });
-
-    it('clears the page once its last group goes', async () => {
-      local[PAGE] = [{ groupId: 'g1', color: '#ffff00' }];
-
-      const result = await send({ action: 'deleteHighlight', url: PAGE, groupId: 'g1' });
-
-      expect(result.highlights).toEqual([]);
+      expect(result).toMatchObject({ success: false, code: 'site_not_allowed' });
       expect(local[PAGE]).toBeUndefined();
     });
 
-    it('says nothing to the tabs unless asked to', async () => {
-      openTabs(PAGE);
-
-      await send({ action: 'deleteHighlight', url: PAGE, groupId: 'g1' });
-
-      expect(tabMessages('refreshHighlights')).toHaveLength(0);
-    });
-
-    it('sends the tabs what is left of the page', async () => {
-      openTabs(PAGE);
-
-      await send({ action: 'deleteHighlight', url: PAGE, groupId: 'g1', notifyRefresh: true });
-
-      const refreshed = tabMessages('refreshHighlights');
-      expect(refreshed).toHaveLength(1);
-      expect(refreshed[0].message.highlights.map(group => group.groupId)).toEqual(['g2']);
-    });
-
-    it('sends the tabs an empty page when the last group goes', async () => {
-      openTabs(PAGE);
-      local[PAGE] = [{ groupId: 'g1', color: '#ffff00' }];
-
-      await send({ action: 'deleteHighlight', url: PAGE, groupId: 'g1', notifyRefresh: true });
-
-      expect(tabMessages('refreshHighlights')[0].message.highlights).toEqual([]);
-    });
-
-    it('does not send the refresh back to the tab that asked for the delete', async () => {
-      openTabs(PAGE, PAGE);
-
-      await send(
-        { action: 'deleteHighlight', url: PAGE, groupId: 'g1', notifyRefresh: true },
-        { tab: { id: 1, url: PAGE } }
+    it('refuses a url the sending tab is not on', async () => {
+      const result = await send(
+        { action: 'saveHighlights', url: OTHER_PAGE, highlights: [{ groupId: 'g1', color: '#ffff00' }] },
+        FROM_PAGE,
       );
 
-      expect(tabMessages('refreshHighlights').map(entry => entry.tabId)).toEqual([2]);
+      expect(result).toMatchObject({ success: false, code: 'site_not_allowed' });
+      expect(local[OTHER_PAGE]).toBeUndefined();
+    });
+
+    it('accepts the tab url with the selection fragment the controls add', async () => {
+      const result = await send(
+        { action: 'saveHighlights', url: PAGE, highlights: [{ groupId: 'g1', color: '#ffff00' }] },
+        { tab: { id: 4, url: `${PAGE}#selection-2-18`, title: 'Article title' } },
+      );
+
+      expect(result).toEqual({ success: true });
+      expect(local[PAGE]).toHaveLength(1);
+    });
+
+    it('refuses a highlight on a site the allowlist does not cover', async () => {
+      local.sitePolicy = { version: 1, mode: 'allowlist', sites: [] };
+
+      const result = await send(
+        { action: 'saveHighlights', url: PAGE, highlights: [{ groupId: 'g1', color: '#ffff00' }] },
+        FROM_PAGE,
+      );
+
+      expect(result).toMatchObject({ success: false, code: 'site_not_allowed' });
+      expect(local[PAGE]).toBeUndefined();
     });
   });
 
@@ -539,7 +497,7 @@ describe('message-router', () => {
         url: PAGE,
         highlights: [{ groupId: 'g3', color: '#ffff00', text: 'first second' }],
         deletedGroupIds: ['g1', 'g2'],
-      });
+      }, FROM_PAGE);
 
       expect(local[PAGE].map(group => group.groupId)).toEqual(['g3']);
       expect(Object.keys(meta(PAGE).deletedGroupIds).sort()).toEqual(['g0', 'g1', 'g2']);
@@ -552,12 +510,11 @@ describe('message-router', () => {
         url: PAGE,
         highlights: [{ groupId: 'g3', color: '#ffff00', text: 'first second' }],
         deletedGroupIds: ['g1', 'g2'],
-      });
+      }, FROM_PAGE);
 
       // A save from another tab between two separate writes would read the
       // new list with the old metadata and write the tombstones away again, so
-      // no write may carry the list without them. (The sync layer repeats the
-      // pair afterwards, tombstones included.)
+      // no write may carry the list without them.
       const listWrites = chrome.storage.local.set.mock.calls
         .map(([items]) => items)
         .filter(items => PAGE in items);
@@ -573,7 +530,7 @@ describe('message-router', () => {
         action: 'saveHighlights',
         url: PAGE,
         highlights: [{ groupId: 'g1', color: '#ffff00', text: 'first' }],
-      });
+      }, FROM_PAGE);
 
       expect(meta(PAGE).deletedGroupIds).toEqual({ g0: earlierTombstone });
     });
@@ -684,10 +641,6 @@ describe('message-router', () => {
   });
 
   // ===================================================================
-  // Cloud sync
-  // ===================================================================
-
-  // ===================================================================
   // Extension pages opened from the in-page controls
   // ===================================================================
 
@@ -732,87 +685,243 @@ describe('message-router', () => {
     });
   });
 
-  describe('cloud sync', () => {
-    it('reports the stored status', async () => {
-      local[CLOUD_SYNC_KEYS.ENABLED] = true;
-      local[CLOUD_SYNC_KEYS.CODE] = 'ABCD-EFGH-IJKL';
-      local[CLOUD_SYNC_KEYS.LAST_SYNCED_AT] = '2026-06-01T00:00:00.000Z';
+  // ===================================================================
+  // Site rules
+  // ===================================================================
 
-      const result = await send({ action: 'getCloudSyncStatus' });
+  describe('site rules', () => {
+    // The state probe and the injection are both executeScript; only the probe
+    // carries a function to evaluate in the page.
+    function contentScriptNotLoaded() {
+      chrome.scripting.executeScript.mockImplementation(async options => {
+        if (options.func) return [{ result: { booted: false, ready: false, disabled: false } }];
+        return [];
+      });
+    }
 
-      expect(result).toMatchObject({
-        success: true,
-        enabled: true,
-        code: 'ABCD-EFGH-IJKL',
-        lastSyncedAt: '2026-06-01T00:00:00.000Z',
+    it('reports the default policy for a profile that has never set one', async () => {
+      const result = await send({ action: 'getSitePolicy' });
+
+      expect(result).toEqual({ success: true, policy: { version: 1, mode: 'all', sites: [] } });
+    });
+
+    it('describes the page it is given, including the rule that matched', async () => {
+      local.sitePolicy = { version: 1, mode: 'allowlist', sites: [{ hostname: 'arxiv.org', includeSubdomains: true }] };
+
+      const allowed = await send({ action: 'getSiteStatus', url: 'https://www.arxiv.org/abs/1' });
+      expect(allowed.status).toMatchObject({ supported: true, allowed: true, hostname: 'www.arxiv.org' });
+      expect(allowed.status.matchedRule).toEqual({ hostname: 'arxiv.org', includeSubdomains: true });
+    });
+
+    it('calls a browser-internal page unsupported rather than merely disallowed', async () => {
+      const result = await send({ action: 'getSiteStatus', url: 'about:config' });
+
+      expect(result.status).toMatchObject({ supported: false, allowed: false, hostname: null });
+    });
+
+    it('falls back to the active tab when no url is given', async () => {
+      openTabs(OTHER_PAGE);
+
+      const result = await send({ action: 'getSiteStatus' });
+
+      expect(result.status.hostname).toBe('example.com');
+    });
+
+    it('adds a site, normalises what it was given, and hot-injects the open tab it applies to', async () => {
+      local.sitePolicy = { version: 1, mode: 'allowlist', sites: [] };
+      openTabs(PAGE);
+      contentScriptNotLoaded();
+
+      const result = await send({ action: 'addSiteRule', hostname: 'https://example.com/abs/1' });
+
+      expect(result).toMatchObject({ success: true, added: true, hostname: 'example.com', injected: 1, needsRefresh: false });
+      expect(result.policy.sites).toEqual([{ hostname: 'example.com', includeSubdomains: false }]);
+      expect(chrome.scripting.executeScript).toHaveBeenCalledWith({
+        target: { tabId: 1 },
+        files: expect.arrayContaining(['content-scripts/content-common.js', 'content-scripts/content.js']),
       });
     });
 
-    it('reports the off state for a profile that never enabled it', async () => {
-      const result = await send({ action: 'getCloudSyncStatus' });
+    it('says a page must be reloaded when it already runs a script set that cannot be replaced', async () => {
+      local.sitePolicy = { version: 1, mode: 'allowlist', sites: [] };
+      openTabs(PAGE);
+      chrome.scripting.executeScript.mockImplementation(async options => {
+        if (options.func) return [{ result: { booted: true, ready: false, disabled: true } }];
+        return [];
+      });
 
-      expect(result).toMatchObject({ success: true, enabled: false, code: null });
+      const result = await send({ action: 'addSiteRule', hostname: 'example.com' });
+
+      expect(result).toMatchObject({ success: true, added: true, injected: 0, needsRefresh: true });
     });
 
-    it('generates a code, turns sync on and pushes what this device has', async () => {
-      global.fetch
-        .mockResolvedValueOnce({ ok: false, status: 404 }) // GET: nothing stored yet
-        .mockResolvedValueOnce({ ok: true, status: 204 }); // PUT: the first push
+    it('reports an unusable site without changing the policy', async () => {
+      local.sitePolicy = { version: 1, mode: 'allowlist', sites: [] };
 
-      const result = await send({ action: 'enableCloudSync' });
+      const result = await send({ action: 'addSiteRule', hostname: '*.example.org' });
+
+      expect(result).toMatchObject({ success: false, code: 'site_invalid_hostname' });
+      expect(local.sitePolicy.sites).toEqual([]);
+    });
+
+    it('removes the rule that matched the page and tells the open page to stand down', async () => {
+      local.sitePolicy = { version: 1, mode: 'allowlist', sites: [{ hostname: 'example.com', includeSubdomains: true }] };
+      openTabs(PAGE);
+
+      const result = await send({ action: 'removeSiteRule', hostname: 'https://www.example.com/x' });
+
+      expect(result).toMatchObject({ success: true, removed: true, hostname: 'example.com', tornDown: 1 });
+      expect(result.policy.sites).toEqual([]);
+      expect(tabMessages('siteDisabled')).toHaveLength(1);
+    });
+
+    it('keeps the highlights a removed site had saved', async () => {
+      local.sitePolicy = { version: 1, mode: 'allowlist', sites: [{ hostname: 'example.com', includeSubdomains: false }] };
+      local[PAGE] = [{ groupId: 'g1', color: '#ffff00' }];
+
+      await send({ action: 'removeSiteRule', hostname: 'example.com' });
+
+      expect(local[PAGE]).toHaveLength(1);
+    });
+
+    it('keeps the list when the mode is switched back to all sites', async () => {
+      local.sitePolicy = { version: 1, mode: 'allowlist', sites: [{ hostname: 'example.com', includeSubdomains: false }] };
+      local[PAGE] = [{ groupId: 'g1', color: '#ffff00' }];
+      openTabs(PAGE);
+
+      const result = await send({ action: 'setSitePolicyMode', mode: 'all' });
 
       expect(result.success).toBe(true);
-      expect(result.code).toEqual(expect.any(String));
-      expect(local[CLOUD_SYNC_KEYS.ENABLED]).toBe(true);
-      expect(local[CLOUD_SYNC_KEYS.CODE]).toBe(result.code);
-      expect(global.fetch.mock.calls[1][1].method).toBe('PUT');
+      expect(result.policy.mode).toBe('all');
+      expect(result.policy.sites).toHaveLength(1);
+      expect(local[PAGE]).toHaveLength(1);
     });
 
-    it('refuses to pair without a code', async () => {
-      const result = await send({ action: 'pairCloudSync' });
+    it('flips the subdomain flag on one rule and reports one that is not there', async () => {
+      local.sitePolicy = { version: 1, mode: 'allowlist', sites: [{ hostname: 'example.com', includeSubdomains: false }] };
 
-      expect(result).toEqual({ success: false, error: 'Missing sync code' });
-      expect(global.fetch).not.toHaveBeenCalled();
+      const updated = await send({ action: 'setSiteRuleSubdomains', hostname: 'example.com', includeSubdomains: true });
+      expect(updated).toMatchObject({ success: true, updated: true });
+      expect(updated.policy.sites).toEqual([{ hostname: 'example.com', includeSubdomains: true }]);
+
+      const missing = await send({ action: 'setSiteRuleSubdomains', hostname: 'nope.example', includeSubdomains: true });
+      expect(missing).toMatchObject({ success: false, code: 'site_not_found' });
     });
 
-    it('reports a code the server has nothing for, and stays off', async () => {
-      global.fetch.mockResolvedValue({ ok: false, status: 404 });
+    // The whole point of the fork's storage change: nothing reaches the browser
+    // account any more.
+    it('never writes to storage.sync', async () => {
+      local.sitePolicy = { version: 1, mode: 'allowlist', sites: [] };
 
-      const result = await send({ action: 'pairCloudSync', code: 'ABCD-EFGH-IJKL' });
+      await send({ action: 'addSiteRule', hostname: 'example.com' }, FROM_PAGE);
+      await send({ action: 'saveHighlights', url: PAGE, highlights: [{ groupId: 'g1', color: '#ffff00' }] }, FROM_PAGE);
+      await send({ action: 'saveSettings', minimapVisible: false });
+      await send({ action: 'getColors' });
 
-      expect(result.success).toBe(false);
-      expect(local[CLOUD_SYNC_KEYS.ENABLED]).toBeUndefined();
+      expect(chrome.storage.sync.set).not.toHaveBeenCalled();
+      expect(chrome.storage.sync.get).not.toHaveBeenCalled();
+      expect(chrome.storage.sync.remove).not.toHaveBeenCalled();
+    });
+  });
+  // ===================================================================
+  // Backup actions
+  // ===================================================================
+
+  describe('backup actions', () => {
+    // `send` defaults to a sender with no tab, which is what an extension page
+    // looks like; FROM_PAGE is a content script.
+    const BACKUP_ACTIONS = [
+      { action: 'getBackupState' },
+      { action: 'setBackupDestination', destination: 'gist' },
+      { action: 'setBackupAutoEnabled', enabled: true },
+      { action: 'saveGistConfig', token: 'ghp_x' },
+      { action: 'saveWebdavConfig', url: 'https://dav.example.com/x.json' },
+      { action: 'generateBackupRecoveryCode' },
+      { action: 'saveBackupRecoveryCode', code: 'X' },
+      { action: 'testBackupConnection' },
+      { action: 'runBackupNow' },
+      { action: 'previewRemoteBackup' },
+      { action: 'restoreFromRemoteBackup', confirm: true },
+      { action: 'exportLocalBackup' },
+    ];
+
+    it.each(BACKUP_ACTIONS)('refuses $action from a content script and touches nothing', async (message) => {
+      const readsBefore = chrome.storage.local.get.mock.calls.length;
+
+      const result = await send(message, FROM_PAGE);
+
+      expect(result).toMatchObject({ success: false, code: 'backup_forbidden' });
+      expect(chrome.storage.local.get.mock.calls.length).toBe(readsBefore);
+      expect(chrome.downloads.download).not.toHaveBeenCalled();
     });
 
-    it('turns sync off without forgetting the code', async () => {
-      local[CLOUD_SYNC_KEYS.ENABLED] = true;
-      local[CLOUD_SYNC_KEYS.CODE] = 'ABCD-EFGH-IJKL';
+    it('answers an extension page that has no tab of its own', async () => {
+      const result = await send({ action: 'getBackupState' }, { url: 'chrome-extension://abcdefgh/popup.html' });
 
-      const result = await send({ action: 'disableCloudSync' });
-
-      expect(result).toEqual({ success: true });
-      expect(local[CLOUD_SYNC_KEYS.ENABLED]).toBe(false);
-      expect(local[CLOUD_SYNC_KEYS.CODE]).toBe('ABCD-EFGH-IJKL');
+      expect(result.success).toBe(true);
     });
 
-    it('forgets the code on reset', async () => {
-      local[CLOUD_SYNC_KEYS.ENABLED] = true;
-      local[CLOUD_SYNC_KEYS.CODE] = 'ABCD-EFGH-IJKL';
-      local[CLOUD_SYNC_KEYS.LAST_SYNCED_AT] = '2026-06-01T00:00:00.000Z';
+    it('answers an extension page with the state and no secrets beyond the recovery code', async () => {
+      local.backupRecoveryCode = 'ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23';
+      local.backupConfig = {
+        version: 1,
+        destination: 'gist',
+        autoEnabled: false,
+        gist: { token: 'ghp_secret', gistId: 'g1', filename: 'marks-local-backup.enc.json' },
+        webdav: { url: '', username: '', password: '' },
+      };
 
-      const result = await send({ action: 'resetCloudSyncCode' });
+      const result = await send({ action: 'getBackupState' }, FROM_EXTENSION);
 
-      expect(result).toEqual({ success: true });
-      expect(local[CLOUD_SYNC_KEYS.ENABLED]).toBe(false);
-      expect(local[CLOUD_SYNC_KEYS.CODE]).toBeNull();
-      expect(local[CLOUD_SYNC_KEYS.LAST_SYNCED_AT]).toBeNull();
+      expect(result.success).toBe(true);
+      expect(result.state).toMatchObject({
+        destination: 'gist',
+        hasRecoveryCode: true,
+        recoveryCode: 'ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23',
+        upToDate: false,
+        gist: { hasToken: true, gistId: 'g1' },
+        webdav: { hasPassword: false },
+      });
+      expect(JSON.stringify(result)).not.toContain('ghp_secret');
     });
 
-    it('refuses a manual sync while sync is off, without reaching the network', async () => {
-      const result = await send({ action: 'triggerCloudSync' });
+    it('mints a recovery code when a destination is chosen for the first time', async () => {
+      const first = await send({ action: 'setBackupDestination', destination: 'webdav' }, FROM_EXTENSION);
 
-      expect(result).toEqual({ success: false, error: 'Cloud sync is not enabled' });
-      expect(global.fetch).not.toHaveBeenCalled();
+      expect(first.success).toBe(true);
+      expect(typeof first.generatedRecoveryCode).toBe('string');
+      expect(first.state).toMatchObject({ destination: 'webdav', hasRecoveryCode: true, configured: false });
+
+      const second = await send({ action: 'setBackupDestination', destination: 'webdav' }, FROM_EXTENSION);
+      expect(second.generatedRecoveryCode).toBeNull();
+    });
+
+    it('rejects a recovery code that is not one', async () => {
+      const result = await send({ action: 'saveBackupRecoveryCode', code: 'not a code' }, FROM_EXTENSION);
+
+      expect(result).toMatchObject({ success: false, code: 'backup_invalid_format' });
+    });
+
+    it('will not restore without an explicit confirmation', async () => {
+      local.backupRecoveryCode = 'ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23';
+      local.backupConfig = { destination: 'gist', gist: { token: 'ghp_x' } };
+      globalThis.fetch = jest.fn();
+
+      const result = await send({ action: 'restoreFromRemoteBackup' }, FROM_EXTENSION);
+
+      expect(result).toMatchObject({ success: false, code: 'backup_confirm_required' });
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+      expect(chrome.downloads.download).not.toHaveBeenCalled();
+    });
+
+    it('reports a backup run that found nothing to upload as a success with no upload', async () => {
+      local.backupConfig = { destination: 'none' };
+
+      const result = await send({ action: 'runBackupNow' }, FROM_EXTENSION);
+
+      expect(result.success).toBe(true);
+      expect(result.result).toMatchObject({ ok: false, code: 'backup_not_configured' });
+      expect(result.state).toMatchObject({ destination: 'none' });
     });
   });
 });

@@ -423,15 +423,63 @@
         padding: 10px 0;
       }
 
-      /* Cloud Sync */
-      .cloud-sync-pair-row {
+      /* Site Rules */
+      .site-rules-mode-group {
         display: flex;
-        gap: 8px;
+        gap: 16px;
         margin-top: 10px;
       }
 
-      .cloud-sync-code-input {
-        flex: 1;
+      .site-rules-mode-option {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      .site-rules-warning {
+        margin: 12px 0 8px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: rgba(239, 68, 68, 0.12);
+        border: 1px solid var(--danger);
+        color: var(--danger);
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 1.4;
+      }
+
+      .site-rules-meta {
+        margin-top: 10px;
+      }
+
+      .site-rules-examples {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin-top: 4px;
+        font-size: 12px;
+      }
+
+      .site-rules-add-row {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border);
+      }
+
+      .site-rules-add-controls {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .site-rules-input {
+        width: 100%;
         min-width: 0;
         padding: 8px 10px;
         border-radius: 8px;
@@ -439,54 +487,261 @@
         background: var(--surface-strong);
         color: var(--text);
         font-size: 13px;
-        font-family: monospace;
         outline: none;
       }
 
-      .cloud-sync-code-row {
+      .site-rules-input:focus {
+        border-color: var(--accent);
+      }
+
+      .site-rules-checkbox-label {
         display: flex;
         align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--muted);
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .site-rules-search-row {
+        margin-top: 12px;
+      }
+
+      .site-rules-list {
+        display: flex;
+        flex-direction: column;
+        margin-top: 8px;
+      }
+
+      .site-rule-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         gap: 8px;
-        padding: 10px 0;
+        padding: 8px 0;
         border-bottom: 1px solid var(--border);
       }
 
-      .cloud-sync-code-row > span {
-        font-size: 13px;
-        color: var(--muted);
-        flex: 0 0 auto;
+      .site-rule-row:last-child {
+        border-bottom: none;
       }
 
-      .cloud-sync-code-value {
-        flex: 1;
+      .site-rule-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
         min-width: 0;
+        flex: 1;
+      }
+
+      .site-rule-hostname {
         font-family: monospace;
-        font-size: 12px;
-        word-break: break-all;
+        font-size: 13px;
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .site-rule-badge {
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        white-space: nowrap;
         background: var(--surface-strong);
         border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 4px 6px;
+        color: var(--muted);
       }
 
-      .cloud-sync-status-row {
+      .site-rule-badge.badge-subdomains {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+
+      .site-rule-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .site-rules-error-text {
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--danger);
+      }
+
+      .site-rules-feedback-text {
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--accent);
+      }
+
+      /* Backup & Restore */
+      .radio-group {
+        display: flex;
+        gap: 16px;
+        margin-top: 6px;
+        flex-wrap: wrap;
+      }
+
+      .radio-option {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 12px;
+      }
+
+      .form-group label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text);
+      }
+
+      .form-input {
+        width: 100%;
+        min-width: 0;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--surface-strong);
+        color: var(--text);
+        font-size: 13px;
+        outline: none;
+        box-sizing: border-box;
+      }
+
+      .form-input:focus {
+        border-color: var(--accent);
+      }
+
+      .backup-provider-config {
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border);
+      }
+
+      .backup-subsection-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text);
+        margin: 0 0 8px;
+      }
+
+      .backup-provider-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .backup-insecure-warning {
+        color: var(--danger);
+        margin-top: 4px;
+      }
+
+      .backup-section-block {
+        margin-top: 16px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border);
+      }
+
+      .backup-code-row {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+
+      .backup-code-wrapper {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+        flex: 1;
+      }
+
+      .backup-code-display {
+        font-family: monospace;
+        font-size: 13px;
+        padding: 6px 10px;
+        border-radius: 6px;
+        background: var(--surface-strong);
+        border: 1px solid var(--border);
+        color: var(--text);
+        user-select: all;
+        word-break: break-all;
+        min-height: 18px;
+      }
+
+      .backup-code-actions {
+        display: flex;
+        gap: 6px;
+      }
+
+      .backup-custom-code-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .backup-actions-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .backup-status-container {
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border);
+      }
+
+      .backup-status-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 10px;
-        padding: 10px 0;
       }
 
-      .cloud-sync-status-row .hint-text {
-        margin: 0;
+      .backup-warning-banner {
+        margin: 12px 0;
+        padding: 12px;
+        border-radius: 8px;
+        background: rgba(245, 158, 11, 0.12);
+        border: 1px solid #f59e0b;
+        color: var(--text);
       }
 
-      .cloud-sync-error-text {
+      .backup-banner-title {
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 1.4;
+      }
+
+      .backup-error-text {
+        margin-top: 6px;
+        font-size: 12px;
         color: var(--danger);
       }
 
-      #cloud-sync-reset-btn {
-        margin-top: 12px;
+      .backup-feedback-text {
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--accent);
       }
 
 </style>
@@ -551,57 +806,268 @@
         <input type="color" id="color-picker-hidden" style="display:none" />
       </section>
 
-      <!-- Cloud Sync Section -->
-      <section class="section-card" id="cloud-sync-section">
-        <h2 class="section-title" data-i18n="cloudSyncSection">Cloud Sync (Beta)</h2>
-        <p class="hint-text" data-i18n="cloudSyncIntro">
-          Sync highlights across devices via an encrypted cloud backup, for platforms
-          (like Firefox for Android) where browser sync isn't available. Your data is
-          encrypted on this device before upload; the sync code is the only way to decrypt it.
+      <!-- Site Rules Section -->
+      <section class="section-card" id="site-rules-section">
+        <h2 class="section-title" data-i18n="siteRulesSection">Site Rules</h2>
+
+        <div class="site-rules-mode-group">
+          <label class="site-rules-mode-option">
+            <input type="radio" name="site-rules-mode" id="site-rules-mode-all" value="all" checked />
+            <span data-i18n="siteRulesModeAll">All websites</span>
+          </label>
+          <label class="site-rules-mode-option">
+            <input type="radio" name="site-rules-mode" id="site-rules-mode-allowlist" value="allowlist" />
+            <span data-i18n="siteRulesModeAllowlist">Allowlisted sites only</span>
+          </label>
+        </div>
+        <p id="site-rules-mode-help" class="hint-text" data-i18n="siteRulesModeAllHelp">
+          Highlighting runs on every ordinary http and https page.
         </p>
 
-        <div id="cloud-sync-setup">
-          <button id="cloud-sync-generate-btn" class="btn btn-primary" data-i18n="cloudSyncGenerateCode">Generate New Code</button>
-          <div class="cloud-sync-pair-row">
-            <input
-              type="text"
-              id="cloud-sync-pair-input"
-              class="cloud-sync-code-input"
-              data-i18n="cloudSyncPairCodePlaceholder"
-              placeholder="Enter sync code from another device"
-            />
-            <button id="cloud-sync-pair-btn" class="btn" data-i18n="cloudSyncPairCodeButton">Connect</button>
+        <div id="site-rules-empty-warning" class="site-rules-warning" style="display:none" role="alert">
+          <span data-i18n="siteRulesEmptyAllowlist">The allowlist is empty, so highlighting is switched off everywhere. Add a site to turn it back on.</span>
+        </div>
+
+        <div class="site-rules-meta">
+          <div id="site-rules-count" class="hint-text"></div>
+          <div class="site-rules-examples hint-text">
+            <span data-i18n="siteRulesExactExample">Exact hostname, for example arxiv.org</span>
+            <span data-i18n="siteRulesSubdomainExample">With subdomains, www.arxiv.org also matches</span>
           </div>
         </div>
 
-        <div id="cloud-sync-connected" style="display:none">
-          <div class="toggle-container">
-            <label for="cloud-sync-toggle" data-i18n="cloudSyncEnabledLabel">Cloud Sync</label>
-            <label class="toggle-switch">
-              <input type="checkbox" id="cloud-sync-toggle" />
-              <span class="toggle-slider"></span>
+        <div class="site-rules-add-row">
+          <input
+            type="text"
+            id="site-rules-add-input"
+            class="site-rules-input"
+            data-i18n="siteRulesAddPlaceholder"
+            placeholder="example.org or https://example.org/page"
+          />
+          <div class="site-rules-add-controls">
+            <label class="site-rules-checkbox-label">
+              <input type="checkbox" id="site-rules-include-subdomains" />
+              <span data-i18n="siteRulesIncludeSubdomains">Include subdomains</span>
             </label>
+            <button id="site-rules-add-btn" class="btn btn-primary" data-i18n="siteRulesAddButton">Add site</button>
           </div>
+          <div id="site-rules-error" class="site-rules-error-text" style="display:none" role="alert"></div>
+          <div id="site-rules-feedback" class="site-rules-feedback-text" style="display:none" role="status"></div>
+        </div>
 
-          <div class="cloud-sync-code-row">
-            <span data-i18n="cloudSyncYourCode">Your Sync Code</span>
-            <code id="cloud-sync-code-display" class="cloud-sync-code-value"></code>
-            <button id="cloud-sync-toggle-visibility-btn" class="btn-icon" data-i18n="cloudSyncShowCode">Show</button>
-            <button id="cloud-sync-copy-btn" class="btn-icon" data-i18n="cloudSyncCopyCode">Copy</button>
-          </div>
-          <p class="hint-text" data-i18n="cloudSyncSaveCodeWarning">
-            Save this code somewhere safe. If you lose it, this data cannot be recovered.
-          </p>
+        <div class="site-rules-search-row">
+          <input
+            type="search"
+            id="site-rules-search-input"
+            class="site-rules-input"
+            data-i18n="siteRulesSearchPlaceholder"
+            placeholder="Search sites"
+          />
+        </div>
 
-          <div class="cloud-sync-status-row">
-            <span id="cloud-sync-status-text" class="hint-text"></span>
-            <button id="cloud-sync-now-btn" class="btn" data-i18n="cloudSyncNowButton">Sync Now</button>
-          </div>
-
-          <button id="cloud-sync-reset-btn" class="btn-icon btn-danger" data-i18n="cloudSyncResetButton">Forget Code</button>
+        <div id="site-rules-list" class="site-rules-list"></div>
+        <div id="site-rules-empty" class="empty-text" style="display:none" data-i18n="siteRulesNoSites">
+          No sites in the list yet.
         </div>
       </section>
+      <!-- Backup Section -->
+      <section class="section-card" id="backup-section">
+        <h2 class="section-title" data-i18n="backupSection">Backup &amp; Restore</h2>
 
+        <!-- Generated recovery code prominent notice banner (shown on first destination choice) -->
+        <div id="backup-new-code-banner" class="backup-warning-banner" style="display:none" role="alert">
+          <div class="backup-banner-title" data-i18n="backupNewRecoveryCodeNotice">
+            Copy and keep this recovery code somewhere safe. If you ever lose this code, your encrypted backups cannot be recovered.
+          </div>
+          <div class="backup-code-row">
+            <code id="backup-generated-code-value" class="backup-code-display"></code>
+            <button id="backup-copy-generated-code-btn" type="button" class="btn btn-icon" data-i18n="backupCopyCodeBtn">Copy</button>
+          </div>
+        </div>
+
+        <!-- Destination Selector -->
+        <div class="form-group">
+          <label data-i18n="backupDestinationLabel">Backup destination</label>
+          <div class="radio-group">
+            <label class="radio-option">
+              <input type="radio" name="backup-destination" id="backup-dest-none" value="none" checked />
+              <span data-i18n="backupDestNone">None (disabled)</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="backup-destination" id="backup-dest-gist" value="gist" />
+              <span data-i18n="backupDestGist">GitHub Gist</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="backup-destination" id="backup-dest-webdav" value="webdav" />
+              <span data-i18n="backupDestWebdav">WebDAV</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Provider: Gist Config -->
+        <div id="backup-gist-config" class="backup-provider-config" style="display:none">
+          <h3 class="backup-subsection-title" data-i18n="backupGistTitle">GitHub Gist Settings</h3>
+          <div class="form-group">
+            <label for="backup-gist-token" data-i18n="backupGistTokenLabel">Personal access token</label>
+            <input
+              type="password"
+              id="backup-gist-token"
+              class="form-input"
+              data-i18n="backupGistTokenPlaceholder"
+              placeholder="ghp_..."
+            />
+          </div>
+          <div class="form-group">
+            <label for="backup-gist-id" data-i18n="backupGistIdLabel">Gist ID (optional)</label>
+            <input
+              type="text"
+              id="backup-gist-id"
+              class="form-input"
+              data-i18n="backupGistIdPlaceholder"
+              placeholder="Leave empty to create a new Gist"
+            />
+            <p class="hint-text" data-i18n="backupGistIdHelp">Leave empty to automatically create a private Gist on the first backup.</p>
+          </div>
+          <div class="form-group">
+            <label for="backup-gist-filename" data-i18n="backupGistFilenameLabel">Filename</label>
+            <input
+              type="text"
+              id="backup-gist-filename"
+              class="form-input"
+              data-i18n="backupGistFilenamePlaceholder"
+              placeholder="marks-backup.json"
+            />
+          </div>
+          <div class="backup-provider-actions">
+            <button id="backup-gist-save-btn" type="button" class="btn btn-primary" data-i18n="backupSaveConfigBtn">Save</button>
+            <button id="backup-gist-test-btn" type="button" class="btn" data-i18n="backupTestConnectionBtn">Test connection</button>
+          </div>
+          <div id="backup-gist-error" class="backup-error-text" style="display:none" role="alert"></div>
+          <div id="backup-gist-feedback" class="backup-feedback-text" style="display:none" role="status"></div>
+        </div>
+
+        <!-- Provider: WebDAV Config -->
+        <div id="backup-webdav-config" class="backup-provider-config" style="display:none">
+          <h3 class="backup-subsection-title" data-i18n="backupWebdavTitle">WebDAV Settings</h3>
+          <div class="form-group">
+            <label for="backup-webdav-url" data-i18n="backupWebdavUrlLabel">Server URL</label>
+            <input
+              type="url"
+              id="backup-webdav-url"
+              class="form-input"
+              data-i18n="backupWebdavUrlPlaceholder"
+              placeholder="https://example.com/remote.php/dav/files/user/"
+            />
+          </div>
+          <div class="form-group">
+            <label for="backup-webdav-username" data-i18n="backupWebdavUsernameLabel">Username</label>
+            <input
+              type="text"
+              id="backup-webdav-username"
+              class="form-input"
+              data-i18n="backupWebdavUsernamePlaceholder"
+              placeholder="Username"
+            />
+          </div>
+          <div class="form-group">
+            <label for="backup-webdav-password" data-i18n="backupWebdavPasswordLabel">Password</label>
+            <input
+              type="password"
+              id="backup-webdav-password"
+              class="form-input"
+              data-i18n="backupWebdavPasswordPlaceholder"
+              placeholder="Password"
+            />
+          </div>
+          <div class="form-group">
+            <label class="site-rules-checkbox-label">
+              <input type="checkbox" id="backup-webdav-insecure-http" />
+              <span data-i18n="backupWebdavInsecureLabel">Allow plain HTTP</span>
+            </label>
+            <p class="backup-insecure-warning hint-text" data-i18n="backupWebdavInsecureWarning">
+              Warning: Plain HTTP sends your recovery key and data unencrypted over the local network.
+            </p>
+          </div>
+          <div class="backup-provider-actions">
+            <button id="backup-webdav-save-btn" type="button" class="btn btn-primary" data-i18n="backupSaveConfigBtn">Save</button>
+            <button id="backup-webdav-test-btn" type="button" class="btn" data-i18n="backupTestConnectionBtn">Test connection</button>
+          </div>
+          <div id="backup-webdav-error" class="backup-error-text" style="display:none" role="alert"></div>
+          <div id="backup-webdav-feedback" class="backup-feedback-text" style="display:none" role="status"></div>
+        </div>
+
+        <!-- Recovery Code Area -->
+        <div id="backup-recovery-area" class="backup-section-block">
+          <h3 class="backup-subsection-title" data-i18n="backupRecoverySectionTitle">Recovery Code</h3>
+          <p class="hint-text" data-i18n="backupRecoveryCodeHelp">
+            Your recovery code encrypts your backups locally before upload. Losing this code makes existing backups unreadable.
+          </p>
+
+          <div id="backup-recovery-current-row" class="backup-code-row">
+            <div class="backup-code-wrapper">
+              <label class="hint-text" data-i18n="backupRecoveryCodeLabel">Current recovery code</label>
+              <code id="backup-recovery-code-display" class="backup-code-display"></code>
+            </div>
+            <div class="backup-code-actions">
+              <button id="backup-copy-recovery-code-btn" type="button" class="btn btn-icon" data-i18n="backupCopyCodeBtn">Copy</button>
+              <button id="backup-regenerate-code-btn" type="button" class="btn btn-icon" data-i18n="backupRegenerateCodeBtn">Regenerate code</button>
+            </div>
+          </div>
+
+          <div class="backup-custom-code-row">
+            <input
+              type="text"
+              id="backup-custom-recovery-code-input"
+              class="form-input"
+              data-i18n="backupCustomCodePlaceholder"
+              placeholder="Paste recovery code"
+            />
+            <button id="backup-save-recovery-code-btn" type="button" class="btn" data-i18n="backupUseCustomCodeBtn">
+              Use an existing recovery code
+            </button>
+          </div>
+
+          <div id="backup-recovery-error" class="backup-error-text" style="display:none" role="alert"></div>
+          <div id="backup-recovery-feedback" class="backup-feedback-text" style="display:none" role="status"></div>
+        </div>
+
+        <!-- Automatic Backup Toggle -->
+        <div class="toggle-container" id="backup-auto-row">
+          <div class="toggle-label">
+            <label for="backup-auto-toggle" data-i18n="backupAutoEnabledLabel">Automatic backup</label>
+            <span class="help-tip" tabindex="0">
+              ?
+              <span class="help-bubble" data-i18n="backupAutoEnabledHelp">
+                Automatically back up your data once a day when changes are detected.
+              </span>
+            </span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="backup-auto-toggle" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <!-- Backup Actions -->
+        <div class="backup-section-block">
+          <div class="backup-actions-row">
+            <button id="backup-now-btn" type="button" class="btn btn-primary" data-i18n="backupNowBtn">Back up now</button>
+            <button id="backup-restore-btn" type="button" class="btn" data-i18n="backupRestoreBtn">Restore from backup</button>
+            <button id="backup-export-local-btn" type="button" class="btn" data-i18n="backupExportLocalBtn">Export local backup</button>
+          </div>
+          <div id="backup-action-error" class="backup-error-text" style="display:none" role="alert"></div>
+          <div id="backup-action-feedback" class="backup-feedback-text" style="display:none" role="status"></div>
+        </div>
+
+        <!-- Status Line -->
+        <div id="backup-status-container" class="backup-status-container">
+          <div class="backup-status-row hint-text">
+            <span id="backup-status-last-success"></span>
+            <span id="backup-status-up-to-date" class="site-rule-badge"></span>
+          </div>
+          <div id="backup-status-last-error" class="backup-error-text" style="display:none" role="alert"></div>
+        </div>
+      </section>
       <!-- Keyboard Shortcuts Section -->
       <section class="section-card" id="shortcuts-section">
         <h2 class="section-title" data-i18n="shortcutsSection">Keyboard Shortcuts</h2>

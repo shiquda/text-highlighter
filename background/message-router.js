@@ -1,24 +1,7 @@
 import { browserAPI } from '../shared/browser-api.js';
 import { DEBUG_MODE, debugLog } from '../shared/logger.js';
 import { broadcastToAllTabs, broadcastToTabsByUrl } from '../shared/tab-broadcast.js';
-import { STORAGE_KEYS } from '../constants/storage-keys.js';
-import {
-  syncSaveHighlights,
-  syncRemoveHighlights,
-  clearAllSyncedHighlights,
-  cleanupEmptyHighlightData,
-  cleanupTombstones,
-  saveSettingsToSync,
-  recordCloudSyncTombstones,
-} from './sync-service.js';
-import {
-  getCloudSyncStatus,
-  enableCloudSyncWithNewCode,
-  enableCloudSyncWithExistingCode,
-  disableCloudSync,
-  resetCloudSyncCode,
-  runCloudSync,
-} from './cloud-sync-service.js';
+import { STORAGE_KEYS, isPageStorageKey } from '../constants/storage-keys.js';
 import {
   getPlatformInfo,
   getCurrentColors,
@@ -33,10 +16,115 @@ import {
   saveShortcutColorMap,
   ensureCustomColorsLoaded,
 } from './settings-service.js';
+import {
+  getSitePolicy,
+  getSiteStatus,
+  isUrlAllowed,
+  applySiteMode,
+  addSite,
+  removeSite,
+  updateSiteSubdomains,
+} from './site-rule-service.js';
+import {
+  getBackupState,
+  setBackupDestination,
+  setBackupAutoEnabled,
+  saveGistConfig,
+  saveWebdavConfig,
+  generateBackupRecoveryCode,
+  saveBackupRecoveryCode,
+  testBackupConnection,
+  runBackup,
+  previewRemoteBackup,
+  restoreFromRemoteBackup,
+  exportLocalBackup,
+} from './backup-service.js';
 import { openExtensionPage } from './extension-pages.js';
 
 function successResponse(data = {}) { return { success: true, ...data }; }
-function errorResponse(message) { return { success: false, error: message }; }
+function errorResponse(message, code = 'generic_error', extra = {}) {
+  return { success: false, code, error: message, ...extra };
+}
+
+const EXTENSION_PAGE_SCHEMES = [
+  'moz-extension://',
+  'chrome-extension://',
+  'safari-web-extension://',
+  'ms-browser-extension://',
+];
+
+/**
+ * Backup actions answer only the pages that ship with the extension.
+ *
+ * A content script is an extension context, and `getBackupState` answers with
+ * the recovery code - the one secret that turns a stolen remote file back into
+ * the user's browsing history. The sender's URL is what separates the two: a
+ * content script carries the page's own http(s) URL, while the settings page
+ * carries the extension's scheme. A `sender.tab` cannot be that test on its
+ * own, because opening settings puts it in a tab like any other page.
+ */
+function forExtensionPages(handler) {
+  return (message, sender) => {
+    const url = (sender && (sender.url || (sender.tab && sender.tab.url))) || '';
+    if (!EXTENSION_PAGE_SCHEMES.some(scheme => url.startsWith(scheme))) {
+      return Promise.resolve(errorResponse(
+        'Backup actions are only available from the extension pages.',
+        'backup_forbidden'
+      ));
+    }
+    return handler(message, sender);
+  };
+}
+
+// Merged-away group ids are kept as tombstones so a restore from a backup taken
+// before the merge does not bring the merged groups back, and so the page itself
+// can tell "removed" from "not in this export". They are small, but they only
+// ever grow, so anything older than the retention window goes.
+const DELETED_GROUP_ID_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+function pruneDeletedGroupIds(deletedGroupIds) {
+  const now = Date.now();
+  for (const key of Object.keys(deletedGroupIds)) {
+    if (now - deletedGroupIds[key] > DELETED_GROUP_ID_RETENTION_MS) delete deletedGroupIds[key];
+  }
+  return deletedGroupIds;
+}
+
+// ===================================================================
+// Write authorization
+// ===================================================================
+
+/**
+ * The URL the content scripts report is `location.href` with the
+ * `#selection-<n>-<m>` fragment their own controls add stripped off, so a save
+ * arrives under a URL that differs from the tab's by that fragment alone.
+ */
+function normalizePageUrl(url) {
+  return typeof url === 'string' ? url.replace(/#selection-\d+-\d+$/, '') : url;
+}
+
+/**
+ * Whether this sender may create a highlight for the URL it named.
+ *
+ * The tab URL is the authority, never the message: a content script can put
+ * anything in `message.url`, so trusting it would make the site rules
+ * advisory. A message that does not come from a page at all - the popup and the
+ * settings page have no `sender.tab` - is refused outright, because neither of
+ * them has any business creating a highlight.
+ */
+async function authorizeHighlightWrite(message, sender) {
+  const senderUrl = sender && sender.tab ? sender.tab.url : null;
+  if (!senderUrl) return { ok: false, code: 'site_not_allowed', error: 'Highlighting is not enabled on this site.' };
+
+  const pageUrl = normalizePageUrl(senderUrl);
+  if (normalizePageUrl(message.url) !== pageUrl) {
+    return { ok: false, code: 'site_not_allowed', error: 'Highlighting is not enabled on this site.' };
+  }
+  if (!(await isUrlAllowed(pageUrl))) {
+    return { ok: false, code: 'site_not_allowed', error: 'Highlighting is not enabled on this site.' };
+  }
+  return { ok: true, url: pageUrl };
+}
 
 // ===================================================================
 // Action handlers
@@ -77,10 +165,6 @@ async function handleSaveSettings(message) {
 
   await browserAPI.storage.local.set(settings);
   await broadcastSettingsToTabs(changedSettings);
-
-  saveSettingsToSync().catch(e => {
-    debugLog('Failed to save settings to sync (local already applied):', e.message);
-  });
 
   debugLog('Settings saved locally and broadcasted:', settings, 'changed:', changedSettings);
   return successResponse();
@@ -155,8 +239,12 @@ async function handleSaveShortcutColorMap(message) {
 }
 
 async function handleSaveHighlights(message, sender) {
+  const authorization = await authorizeHighlightWrite(message, sender);
+  if (!authorization.ok) return errorResponse(authorization.error, authorization.code);
+  const url = authorization.url;
+
   if (message.highlights.length > 0) {
-    const metaKey = `${message.url}${STORAGE_KEYS.META_SUFFIX}`;
+    const metaKey = `${url}${STORAGE_KEYS.META_SUFFIX}`;
     const result = await browserAPI.storage.local.get([metaKey]);
     const metaData = result[metaKey] || {};
     if (sender && sender.tab) metaData.title = sender.tab.title;
@@ -164,34 +252,27 @@ async function handleSaveHighlights(message, sender) {
     // Groups this save merged away. Their tombstones go into the same
     // storage.local.set as the list without them: a save from another tab on
     // this url that lands between two separate writes would read the new list
-    // with the old metadata and write the tombstones away again, and a sync
-    // could then bring the merged groups back.
+    // with the old metadata and write the tombstones away again.
     if (Array.isArray(message.deletedGroupIds) && message.deletedGroupIds.length > 0) {
       const deletedGroupIds = metaData.deletedGroupIds || {};
       const deletedAt = Date.now();
       message.deletedGroupIds.forEach(groupId => {
         deletedGroupIds[groupId] = deletedAt;
       });
-      cleanupTombstones(deletedGroupIds);
-      metaData.deletedGroupIds = deletedGroupIds;
+      metaData.deletedGroupIds = pruneDeletedGroupIds(deletedGroupIds);
     }
     metaData.lastUpdated = new Date().toISOString();
 
     await browserAPI.storage.local.set({
-      [message.url]: message.highlights,
+      [url]: message.highlights,
       [metaKey]: metaData,
     });
-    debugLog('Saved highlights for URL:', message.url, message.highlights);
-    debugLog('Saved page metadata:', metaData);
-
-    await syncSaveHighlights(message.url, message.highlights, metaData.title, metaData.lastUpdated);
-    return successResponse();
-  } else {
-    const tombstoneRecorded = await syncRemoveHighlights(message.url);
-    await cleanupEmptyHighlightData(message.url);
-    if (!tombstoneRecorded) await recordCloudSyncTombstones([message.url]);
+    debugLog('Saved highlights for URL:', url, message.highlights.length);
     return successResponse();
   }
+
+  await browserAPI.storage.local.remove([url, `${url}${STORAGE_KEYS.META_SUFFIX}`]);
+  return successResponse();
 }
 
 // The tab that asked for the delete has already taken the group off its page,
@@ -208,40 +289,34 @@ async function handleDeleteHighlight(message, sender) {
 
   const deletedGroupIds = meta.deletedGroupIds || {};
   deletedGroupIds[groupId] = Date.now();
-  cleanupTombstones(deletedGroupIds);
+  pruneDeletedGroupIds(deletedGroupIds);
 
   const updatedHighlights = highlights.filter(g => g.groupId !== groupId);
 
   if (updatedHighlights.length > 0) {
     const lastUpdated = new Date().toISOString();
-    const saveData = {};
-    saveData[url] = updatedHighlights;
-    saveData[`${url}${STORAGE_KEYS.META_SUFFIX}`] = { ...meta, deletedGroupIds, lastUpdated };
-    await browserAPI.storage.local.set(saveData);
+    await browserAPI.storage.local.set({
+      [url]: updatedHighlights,
+      [`${url}${STORAGE_KEYS.META_SUFFIX}`]: { ...meta, deletedGroupIds, lastUpdated },
+    });
     debugLog('Highlight group deleted:', groupId, 'from URL:', url);
-
-    await syncSaveHighlights(url, updatedHighlights, meta.title || '', lastUpdated);
 
     if (message.notifyRefresh) {
       await broadcastToTabsByUrl(url, { action: 'refreshHighlights', highlights: updatedHighlights }, { excludeTabId });
     }
     return successResponse({ highlights: updatedHighlights });
-  } else {
-    const tombstoneRecorded = await syncRemoveHighlights(url);
-    await cleanupEmptyHighlightData(url);
-    if (!tombstoneRecorded) await recordCloudSyncTombstones([url]);
-    if (message.notifyRefresh) {
-      await broadcastToTabsByUrl(url, { action: 'refreshHighlights', highlights: [] }, { excludeTabId });
-    }
-    return successResponse({ highlights: [] });
   }
+
+  await browserAPI.storage.local.remove([url, `${url}${STORAGE_KEYS.META_SUFFIX}`]);
+  if (message.notifyRefresh) {
+    await broadcastToTabsByUrl(url, { action: 'refreshHighlights', highlights: [] }, { excludeTabId });
+  }
+  return successResponse({ highlights: [] });
 }
 
 async function handleClearAllHighlights(message) {
   const { url } = message;
-  const tombstoneRecorded = await syncRemoveHighlights(url);
-  await cleanupEmptyHighlightData(url);
-  if (!tombstoneRecorded) await recordCloudSyncTombstones([url]);
+  await browserAPI.storage.local.remove([url, `${url}${STORAGE_KEYS.META_SUFFIX}`]);
   if (message.notifyRefresh) {
     await broadcastToTabsByUrl(url, { action: 'refreshHighlights', highlights: [] });
   }
@@ -252,30 +327,19 @@ async function handleGetAllHighlightedPages(_message) {
   const result = await browserAPI.storage.local.get(null);
   const pages = [];
 
-  const skipKeys = new Set([
-    STORAGE_KEYS.CUSTOM_COLORS,
-    STORAGE_KEYS.SYNC_MIGRATION_DONE,
-    STORAGE_KEYS.MINIMAP_VISIBLE,
-    STORAGE_KEYS.SELECTION_CONTROLS_VISIBLE,
-    STORAGE_KEYS.SHORTCUT_COLOR_MAP,
-  ]);
-
   for (const key in result) {
-    if (skipKeys.has(key)) continue;
-    if (Array.isArray(result[key]) && result[key].length > 0 && !key.endsWith(STORAGE_KEYS.META_SUFFIX)) {
-      const url = key;
-      const metadata = result[`${url}${STORAGE_KEYS.META_SUFFIX}`] || {};
-      pages.push({
-        url,
-        highlights: result[url],
-        highlightCount: result[url].length,
-        title: metadata.title || '',
-        lastUpdated: metadata.lastUpdated || '',
-      });
-    }
+    if (!isPageStorageKey(key, result[key]) || result[key].length === 0) continue;
+    const metadata = result[`${key}${STORAGE_KEYS.META_SUFFIX}`] || {};
+    pages.push({
+      url: key,
+      highlights: result[key],
+      highlightCount: result[key].length,
+      title: metadata.title || '',
+      lastUpdated: metadata.lastUpdated || '',
+    });
   }
 
-  debugLog('Retrieved all highlighted pages:', pages);
+  debugLog('Retrieved all highlighted pages:', pages.length);
 
   pages.sort((a, b) => {
     if (!a.lastUpdated) return 1;
@@ -289,62 +353,165 @@ async function handleGetAllHighlightedPages(_message) {
 async function handleDeleteAllHighlightedPages(_message) {
   const result = await browserAPI.storage.local.get(null);
   const keysToDelete = [];
-  const urls = [];
-
-  const skipKeys = new Set([
-    STORAGE_KEYS.CUSTOM_COLORS,
-    STORAGE_KEYS.SYNC_MIGRATION_DONE,
-    STORAGE_KEYS.MINIMAP_VISIBLE,
-    STORAGE_KEYS.SELECTION_CONTROLS_VISIBLE,
-    STORAGE_KEYS.SHORTCUT_COLOR_MAP,
-  ]);
 
   for (const key in result) {
-    if (skipKeys.has(key)) continue;
-    if (Array.isArray(result[key]) && result[key].length > 0 && !key.endsWith(STORAGE_KEYS.META_SUFFIX)) {
-      keysToDelete.push(key, `${key}${STORAGE_KEYS.META_SUFFIX}`);
-      urls.push(key);
-    }
+    if (!isPageStorageKey(key, result[key]) || result[key].length === 0) continue;
+    keysToDelete.push(key, `${key}${STORAGE_KEYS.META_SUFFIX}`);
   }
 
   if (keysToDelete.length > 0) {
-    const tombstoneRecorded = await clearAllSyncedHighlights(urls);
     await browserAPI.storage.local.remove(keysToDelete);
-    debugLog('All highlighted pages deleted:', keysToDelete);
-    if (!tombstoneRecorded) await recordCloudSyncTombstones(urls);
+    debugLog('All highlighted pages deleted:', keysToDelete.length / 2);
   }
 
   return successResponse({ deletedCount: keysToDelete.length / 2 });
 }
 
-async function handleGetCloudSyncStatus(_message) {
-  return successResponse(await getCloudSyncStatus());
+// --- Site rules ----------------------------------------------------
+
+async function handleGetSitePolicy(_message) {
+  return successResponse({ policy: await getSitePolicy() });
 }
 
-async function handleEnableCloudSync(_message) {
-  const result = await enableCloudSyncWithNewCode();
-  return successResponse(result);
+async function handleSetSitePolicyMode(message) {
+  const outcome = await applySiteMode(message.mode);
+  return successResponse({ policy: outcome.policy, injected: outcome.injected, needsRefresh: outcome.needsRefresh });
 }
 
-async function handlePairCloudSync(message) {
-  if (!message.code) return errorResponse('Missing sync code');
-  const result = await enableCloudSyncWithExistingCode(message.code);
-  return result.success ? successResponse(result) : errorResponse(result.error);
+async function handleAddSiteRule(message) {
+  const outcome = await addSite(message.hostname, message.includeSubdomains === true);
+  if (!outcome.ok) return errorResponse('Enter a website address such as example.org.', 'site_invalid_hostname');
+  return successResponse({
+    policy: outcome.policy,
+    added: outcome.added,
+    hostname: outcome.hostname,
+    injected: outcome.injected || 0,
+    needsRefresh: outcome.needsRefresh === true,
+  });
 }
 
-async function handleDisableCloudSync(_message) {
-  await disableCloudSync();
-  return successResponse();
+async function handleRemoveSiteRule(message) {
+  const outcome = await removeSite(message.hostname);
+  if (!outcome.ok) return errorResponse('Enter a website address such as example.org.', 'site_invalid_hostname');
+  return successResponse({
+    policy: outcome.policy,
+    removed: outcome.removed,
+    hostname: outcome.hostname,
+    tornDown: outcome.tornDown || 0,
+  });
 }
 
-async function handleResetCloudSyncCode(_message) {
-  await resetCloudSyncCode();
-  return successResponse();
+async function handleSetSiteRuleSubdomains(message) {
+  const outcome = await updateSiteSubdomains(message.hostname, message.includeSubdomains === true);
+  if (!outcome.ok) {
+    const notFound = outcome.reason === 'not-found';
+    return errorResponse(
+      notFound ? 'That site is not in the list.' : 'Enter a website address such as example.org.',
+      notFound ? 'site_not_found' : 'site_invalid_hostname'
+    );
+  }
+  return successResponse({
+    policy: outcome.policy,
+    hostname: outcome.hostname,
+    updated: outcome.updated,
+    injected: outcome.injected || 0,
+    needsRefresh: outcome.needsRefresh === true,
+    tornDown: outcome.tornDown || 0,
+  });
 }
 
-async function handleTriggerCloudSync(_message) {
-  const result = await runCloudSync();
-  return result.success ? successResponse(result) : errorResponse(result.error);
+async function handleGetSiteStatus(message) {
+  let url = message.url;
+  if (!url) {
+    const tabs = await browserAPI.tabs.query({ active: true, currentWindow: true });
+    url = tabs && tabs[0] ? tabs[0].url : null;
+  }
+  if (!url) return successResponse({ status: { supported: false, allowed: false, hostname: null, mode: 'all', matchedRule: null, reason: 'unsupported-url' } });
+  return successResponse({ status: await getSiteStatus(url) });
+}
+
+// --- Backup and restore --------------------------------------------
+
+async function handleGetBackupState(_message) {
+  return successResponse({ state: await getBackupState() });
+}
+
+async function handleSetBackupDestination(message) {
+  const result = await setBackupDestination(message.destination);
+  if (!result.ok) return errorResponse(result.message, result.code);
+  return successResponse({
+    state: await getBackupState(),
+    generatedRecoveryCode: result.generatedRecoveryCode || null,
+  });
+}
+
+async function handleSetBackupAutoEnabled(message) {
+  await setBackupAutoEnabled(message.enabled === true);
+  return successResponse({ state: await getBackupState() });
+}
+
+async function handleSaveGistConfig(message) {
+  const result = await saveGistConfig(message);
+  if (!result.ok) return errorResponse(result.message, result.code);
+  return successResponse({ state: await getBackupState() });
+}
+
+async function handleSaveWebdavConfig(message) {
+  const result = await saveWebdavConfig(message);
+  if (!result.ok) return errorResponse(result.message, result.code);
+  return successResponse({ state: await getBackupState() });
+}
+
+async function handleGenerateBackupRecoveryCode(_message) {
+  const result = await generateBackupRecoveryCode();
+  return successResponse({ state: await getBackupState(), code: result.code });
+}
+
+async function handleSaveBackupRecoveryCode(message) {
+  const result = await saveBackupRecoveryCode(message.code);
+  if (!result.ok) return errorResponse(result.message, result.code);
+  return successResponse({ state: await getBackupState() });
+}
+
+async function handleTestBackupConnection(_message) {
+  const result = await testBackupConnection();
+  const state = await getBackupState();
+  if (!result.ok) return errorResponse(result.message, result.code, { state, details: result.details });
+  return successResponse({ state, details: result.details || null });
+}
+
+async function handleRunBackupNow(message) {
+  const result = await runBackup({ force: message.force === true });
+  return successResponse({ state: await getBackupState(), result });
+}
+
+async function handlePreviewRemoteBackup(_message) {
+  const result = await previewRemoteBackup();
+  if (!result.ok) return errorResponse(result.message, result.code, { state: await getBackupState() });
+  return successResponse({ preview: result.preview, source: result.source, state: await getBackupState() });
+}
+
+async function handleRestoreFromRemoteBackup(message) {
+  if (message.confirm !== true) {
+    return errorResponse('A restore has to be confirmed first.', 'backup_confirm_required');
+  }
+  const result = await restoreFromRemoteBackup({ acceptMissingSnapshot: message.acceptMissingSnapshot === true });
+  if (!result.ok) return errorResponse(result.message, result.code, { state: await getBackupState() });
+
+  // The restored site rules were written straight to storage; the menus the
+  // user is about to look at describe the old ones until this runs.
+  await createOrUpdateContextMenus();
+  return successResponse({
+    summary: result.summary,
+    safetySnapshot: result.safetySnapshot,
+    state: await getBackupState(),
+  });
+}
+
+async function handleExportLocalBackup(_message) {
+  const result = await exportLocalBackup();
+  if (!result.ok) return errorResponse(result.message, result.code);
+  return successResponse({ filename: result.filename, encrypted: true, state: await getBackupState() });
 }
 
 // ===================================================================
@@ -370,12 +537,24 @@ const ACTION_HANDLERS = {
   clearAllHighlights:        handleClearAllHighlights,
   getAllHighlightedPages:    handleGetAllHighlightedPages,
   deleteAllHighlightedPages: handleDeleteAllHighlightedPages,
-  getCloudSyncStatus:        handleGetCloudSyncStatus,
-  enableCloudSync:           handleEnableCloudSync,
-  pairCloudSync:             handlePairCloudSync,
-  disableCloudSync:          handleDisableCloudSync,
-  resetCloudSyncCode:        handleResetCloudSyncCode,
-  triggerCloudSync:          handleTriggerCloudSync,
+  getSitePolicy:             handleGetSitePolicy,
+  setSitePolicyMode:         handleSetSitePolicyMode,
+  addSiteRule:               handleAddSiteRule,
+  removeSiteRule:            handleRemoveSiteRule,
+  setSiteRuleSubdomains:     handleSetSiteRuleSubdomains,
+  getSiteStatus:             handleGetSiteStatus,
+  getBackupState:            forExtensionPages(handleGetBackupState),
+  setBackupDestination:      forExtensionPages(handleSetBackupDestination),
+  setBackupAutoEnabled:      forExtensionPages(handleSetBackupAutoEnabled),
+  saveGistConfig:            forExtensionPages(handleSaveGistConfig),
+  saveWebdavConfig:          forExtensionPages(handleSaveWebdavConfig),
+  generateBackupRecoveryCode: forExtensionPages(handleGenerateBackupRecoveryCode),
+  saveBackupRecoveryCode:    forExtensionPages(handleSaveBackupRecoveryCode),
+  testBackupConnection:      forExtensionPages(handleTestBackupConnection),
+  runBackupNow:              forExtensionPages(handleRunBackupNow),
+  previewRemoteBackup:       forExtensionPages(handlePreviewRemoteBackup),
+  restoreFromRemoteBackup:   forExtensionPages(handleRestoreFromRemoteBackup),
+  exportLocalBackup:         forExtensionPages(handleExportLocalBackup),
 };
 
 // Messages one extension page sends to another. runtime.sendMessage reaches the
@@ -395,7 +574,7 @@ export function registerMessageRouter() {
 
     const handler = ACTION_HANDLERS[message.action];
     if (!handler) {
-      sendResponse(errorResponse(`Unknown action: ${message.action}`));
+      sendResponse(errorResponse(`Unknown action: ${message.action}`, 'unknown_action'));
       return true;
     }
 
@@ -403,7 +582,7 @@ export function registerMessageRouter() {
       .then(result => sendResponse(result))
       .catch(e => {
         debugLog('Error in message handler:', e);
-        sendResponse(errorResponse(e.message));
+        sendResponse(errorResponse(e.message, 'handler_error'));
       });
 
     return true; // Keep message channel open for async response

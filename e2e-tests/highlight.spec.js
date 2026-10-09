@@ -278,22 +278,7 @@ test.describe('Chrome Extension Tests', () => {
     await expect(h1SpanAfterReload).toHaveCount(0);
   });
 
-  test('Deleting one of two highlights with the controls delete button should not be restored by sync merge', async ({ page, background }) => {
-    // Wait for the background page to complete its migration so test data doesn't get cleared
-    await background.evaluate(async () => {
-      const result = await chrome.storage.local.get('syncMigrationDone');
-      if (!result.syncMigrationDone) {
-        return new Promise((resolve) => {
-          chrome.storage.onChanged.addListener(function listener(changes, areaName) {
-            if (areaName === 'local' && changes.syncMigrationDone?.newValue) {
-              chrome.storage.onChanged.removeListener(listener);
-              resolve();
-            }
-          });
-        });
-      }
-    });
-
+  test('Deleting one of two highlights with the controls delete button removes only that one', async ({ page, background }) => {
     await page.goto(`file:///${path.join(__dirname, 'test-page.html')}`);
 
     const h1 = page.locator('h1');
@@ -322,8 +307,8 @@ test.describe('Chrome Extension Tests', () => {
     // Make sure the second paragraph's highlight wasn't accidentally affected by DOM mutations
     await expect(secondParagraph.locator('span.text-highlighter-extension')).toHaveCount(1);
 
-    // Give sync merge/onChanged a chance to run
-    // Since we're deleting, we expect the background sync to NOT restore it
+    // Give anything that watches storage for changes a chance to run: a
+    // deletion that something later undoes would show up here.
     await page.waitForTimeout(2000);
 
     // Verify only 1 highlight group exists on the page (the green one)

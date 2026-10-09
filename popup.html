@@ -460,6 +460,68 @@
         transform: translateX(18px);
       }
 
+      .site-card {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .site-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .site-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+      }
+
+      .site-hostname {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .site-status-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .site-status {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text);
+      }
+
+      .site-mode-note {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.35;
+      }
+
+      .site-feedback {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .site-note {
+        margin: 0;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.35;
+      }
+
       @media (pointer: coarse) {
         body {
           width: auto;
@@ -497,6 +559,22 @@
           </svg>
         </button>
       </header>
+
+      <section id="site-card" class="section-card site-card">
+        <div class="site-header">
+          <span class="site-label" data-i18n="currentSiteLabel">This site</span>
+          <span id="site-hostname" class="site-hostname"></span>
+        </div>
+        <div class="site-status-row">
+          <span id="site-status" class="site-status"></span>
+        </div>
+        <div id="site-mode-note" class="site-mode-note"></div>
+        <button id="site-toggle-btn" class="btn" style="display: none;"></button>
+        <div id="site-feedback" class="site-feedback" style="display: none;">
+          <p id="site-note" class="site-note"></p>
+          <button id="site-refresh-btn" class="btn btn-primary" style="display: none;"></button>
+        </div>
+      </section>
 
       <p class="description" data-i18n="popupDescription">Select text on web pages and use the control UI to highlight.</p>
 

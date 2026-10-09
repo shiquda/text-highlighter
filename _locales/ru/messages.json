@@ -30,10 +30,10 @@
     "message": "Не удалось убедиться, что страница готова. Выберите выделение ещё раз."
   },
   "extensionName": {
-    "message": "Marks: Text Highlighter"
+    "message": "Marks Local"
   },
   "extensionDescription": {
-    "message": "Расширение для выделения текста на веб-страницах цветом"
+    "message": "Local-first text highlighting with optional encrypted backups to GitHub Gist or WebDAV."
   },
   "highlightText": {
     "message": "Выделить текст"
@@ -202,7 +202,8 @@
   },
   "moreOptions": {
     "message": "Ещё"
-  },  "refresh": {
+  },
+  "refresh": {
     "message": "Обновить",
     "description": "Button text for refreshing the highlighted pages list"
   },
@@ -296,72 +297,119 @@
   "colorChangeWarning": {
     "message": "Изменения не затрагивают существующие выделения."
   },
-  "cloudSyncSection": {
-    "message": "Облачная синхронизация (бета)"
+  "siteRulesSection": {
+    "message": "Site Rules"
   },
-  "cloudSyncIntro": {
-    "message": "Синхронизация выделений между устройствами через зашифрованную резервную копию в облаке — для платформ, где синхронизация браузера недоступна, например Firefox для Android. Данные шифруются на этом устройстве перед отправкой; расшифровать их можно только кодом синхронизации."
+  "siteRulesModeLabel": {
+    "message": "Highlighting sites"
   },
-  "cloudSyncGenerateCode": {
-    "message": "Создать новый код"
+  "siteRulesModeAll": {
+    "message": "All websites"
   },
-  "cloudSyncPairCodePlaceholder": {
-    "message": "Введите код синхронизации с другого устройства"
+  "siteRulesModeAllowlist": {
+    "message": "Allowlisted sites only"
   },
-  "cloudSyncPairCodeButton": {
-    "message": "Подключить"
+  "siteRulesModeAllHelp": {
+    "message": "Highlighting runs on every ordinary http and https page."
   },
-  "cloudSyncInvalidCode": {
-    "message": "Похоже, код синхронизации неверный. Проверьте его и попробуйте снова."
+  "siteRulesModeAllowlistHelp": {
+    "message": "Highlighting runs only on the sites listed below. Pages you are not allowed to highlight keep the highlights you already saved there."
   },
-  "cloudSyncYourCode": {
-    "message": "Ваш код синхронизации"
+  "siteRulesEmptyAllowlist": {
+    "message": "The allowlist is empty, so highlighting is switched off everywhere. Add a site to turn it back on."
   },
-  "cloudSyncSaveCodeWarning": {
-    "message": "Сохраните этот код в надёжном месте. Если он потеряется, восстановить данные будет невозможно."
+  "siteRulesCount": {
+    "message": "$1 site(s) in the list"
   },
-  "cloudSyncCopyCode": {
-    "message": "Копировать"
+  "siteRulesSearchPlaceholder": {
+    "message": "Search sites"
   },
-  "cloudSyncShowCode": {
-    "message": "Показать"
+  "siteRulesAddPlaceholder": {
+    "message": "example.org or https://example.org/page"
   },
-  "cloudSyncHideCode": {
-    "message": "Скрыть"
+  "siteRulesAddButton": {
+    "message": "Add site"
   },
-  "cloudSyncCodeCopied": {
-    "message": "Скопировано!"
+  "siteRulesIncludeSubdomains": {
+    "message": "Include subdomains"
   },
-  "cloudSyncCopyFailed": {
-    "message": "Не удалось скопировать автоматически. Код показан выше — скопируйте его вручную."
+  "siteRulesExactExample": {
+    "message": "Exact hostname, for example arxiv.org"
   },
-  "cloudSyncEnabledLabel": {
-    "message": "Облачная синхронизация"
+  "siteRulesSubdomainExample": {
+    "message": "With subdomains, www.arxiv.org also matches"
   },
-  "cloudSyncNowButton": {
-    "message": "Синхронизировать"
+  "siteRulesRemove": {
+    "message": "Remove"
   },
-  "cloudSyncSyncing": {
-    "message": "Синхронизация..."
+  "siteRulesNoSites": {
+    "message": "No sites in the list yet."
   },
-  "cloudSyncNeverSynced": {
-    "message": "Ещё не синхронизировано"
+  "siteRulesNoMatches": {
+    "message": "No sites match your search."
   },
-  "cloudSyncLastSyncedPrefix": {
-    "message": "Последняя синхронизация: "
+  "siteRulesInvalidHostname": {
+    "message": "Enter a website address such as example.org."
   },
-  "cloudSyncErrorPrefix": {
-    "message": "Ошибка синхронизации: "
+  "siteRulesSaved": {
+    "message": "Site rules saved."
   },
-  "cloudSyncResetButton": {
-    "message": "Забыть код"
+  "siteRulesError": {
+    "message": "Could not save the site rules."
   },
-  "cloudSyncResetConfirm": {
-    "message": "Устройство будет отключено, а код синхронизации безвозвратно забыт. Продолжить?"
+  "currentSiteLabel": {
+    "message": "This site"
   },
-  "cloudSyncPagesExcludedNotice": {
-    "message": "(старых страниц исключено из-за ограничения размера: $1)",
-    "description": "Appended to the last-synced status when the oldest pages were dropped from the cloud sync upload to fit the size limit. $1 is the number of excluded pages."
+  "siteStatusEnabled": {
+    "message": "Highlighting enabled"
+  },
+  "siteStatusDisabled": {
+    "message": "Highlighting disabled"
+  },
+  "siteStatusUnsupported": {
+    "message": "This page cannot be highlighted"
+  },
+  "siteModeAllNote": {
+    "message": "All websites mode"
+  },
+  "siteModeAllowlistNote": {
+    "message": "Allowlist mode"
+  },
+  "siteEnableButton": {
+    "message": "Enable highlighting on this site"
+  },
+  "siteRemoveButton": {
+    "message": "Remove from allowlist"
+  },
+  "siteRemovedNote": {
+    "message": "Removed from the allowlist. Your saved highlights are kept."
+  },
+  "siteEnabledNote": {
+    "message": "Highlighting is now enabled on this site."
+  },
+  "siteNeedsRefresh": {
+    "message": "Reload this page to start highlighting here."
+  },
+  "siteRefreshButton": {
+    "message": "Reload page"
+  },
+  "siteActionFailed": {
+    "message": "Could not change the site rules."
+  },
+  "siteNotAllowedError": {
+    "message": "Highlighting is not enabled on this site."
+  },
+  "contextMenuEnableSite": {
+    "message": "Enable highlighting on this site"
+  },
+  "contextMenuRemoveSite": {
+    "message": "Remove from allowlist"
+  },
+  "siteSubdomainsBadge": {
+    "message": "Includes subdomains"
+  },
+  "siteExactBadge": {
+    "message": "Exact hostname"
   },
   "jumpToHighlight": {
     "message": "Перейти к этому выделению на странице"
@@ -451,9 +499,271 @@
   "popupGuideLink": {
     "message": "Открыть полное руководство"
   },
-  "copyPageHighlightsLabel": { "message": "Копировать все выделения этой страницы" },
-  "copyPageHighlightsSuccess": { "message": "Скопировано выделений с этой страницы: $1." },
-  "copySearchResultsLabel": { "message": "Копировать подходящие выделения из результатов поиска" },
-  "copySearchResultsSuccess": { "message": "Скопировано подходящих выделений: $1." },
-  "copyHighlightsFailed": { "message": "Не удалось скопировать выделения. Попробуйте ещё раз." }
+  "copyPageHighlightsLabel": {
+    "message": "Копировать все выделения этой страницы"
+  },
+  "copyPageHighlightsSuccess": {
+    "message": "Скопировано выделений с этой страницы: $1."
+  },
+  "copySearchResultsLabel": {
+    "message": "Копировать подходящие выделения из результатов поиска"
+  },
+  "copySearchResultsSuccess": {
+    "message": "Скопировано подходящих выделений: $1."
+  },
+  "copyHighlightsFailed": {
+    "message": "Не удалось скопировать выделения. Попробуйте ещё раз."
+  },
+  "backupSection": {
+    "message": "Backup & Restore"
+  },
+  "backupDestinationLabel": {
+    "message": "Backup destination"
+  },
+  "backupDestNone": {
+    "message": "None (disabled)"
+  },
+  "backupDestGist": {
+    "message": "GitHub Gist"
+  },
+  "backupDestWebdav": {
+    "message": "WebDAV"
+  },
+  "backupGistTitle": {
+    "message": "GitHub Gist Settings"
+  },
+  "backupGistTokenLabel": {
+    "message": "Personal access token"
+  },
+  "backupGistTokenPlaceholder": {
+    "message": "ghp_..."
+  },
+  "backupTokenSavedPlaceholder": {
+    "message": "•••••••• (saved)"
+  },
+  "backupGistIdLabel": {
+    "message": "Gist ID (optional)"
+  },
+  "backupGistIdPlaceholder": {
+    "message": "Leave empty to create a new Gist"
+  },
+  "backupGistIdHelp": {
+    "message": "Leave empty to automatically create a private Gist on the first backup."
+  },
+  "backupGistFilenameLabel": {
+    "message": "Filename"
+  },
+  "backupGistFilenamePlaceholder": {
+    "message": "marks-backup.json"
+  },
+  "backupWebdavTitle": {
+    "message": "WebDAV Settings"
+  },
+  "backupWebdavUrlLabel": {
+    "message": "Server URL"
+  },
+  "backupWebdavUrlPlaceholder": {
+    "message": "https://example.com/remote.php/dav/files/user/"
+  },
+  "backupWebdavUsernameLabel": {
+    "message": "Username"
+  },
+  "backupWebdavUsernamePlaceholder": {
+    "message": "Username"
+  },
+  "backupWebdavPasswordLabel": {
+    "message": "Password"
+  },
+  "backupWebdavPasswordPlaceholder": {
+    "message": "Password"
+  },
+  "backupPasswordSavedPlaceholder": {
+    "message": "•••••••• (saved)"
+  },
+  "backupWebdavInsecureLabel": {
+    "message": "Allow plain HTTP"
+  },
+  "backupWebdavInsecureWarning": {
+    "message": "Warning: Plain HTTP sends your recovery key and data unencrypted over the local network."
+  },
+  "backupSaveConfigBtn": {
+    "message": "Save"
+  },
+  "backupTestConnectionBtn": {
+    "message": "Test connection"
+  },
+  "backupConfigSaved": {
+    "message": "Backup settings saved."
+  },
+  "backupTestSuccess": {
+    "message": "Connection test succeeded."
+  },
+  "backupRecoverySectionTitle": {
+    "message": "Recovery Code"
+  },
+  "backupRecoveryCodeHelp": {
+    "message": "Your recovery code encrypts your backups locally before upload. Losing this code makes existing backups unreadable."
+  },
+  "backupRecoveryCodeLabel": {
+    "message": "Current recovery code"
+  },
+  "backupCopyCodeBtn": {
+    "message": "Copy"
+  },
+  "backupRecoveryCodeCopied": {
+    "message": "Recovery code copied to clipboard."
+  },
+  "backupRegenerateCodeBtn": {
+    "message": "Regenerate code"
+  },
+  "backupConfirmRegenerateCode": {
+    "message": "Generating a new recovery code means older backups encrypted with the previous code can no longer be opened. Are you sure you want to proceed?"
+  },
+  "backupCodeRegenerated": {
+    "message": "New recovery code generated."
+  },
+  "backupCustomCodePlaceholder": {
+    "message": "Paste recovery code"
+  },
+  "backupUseCustomCodeBtn": {
+    "message": "Use an existing recovery code"
+  },
+  "backupCustomCodeSaved": {
+    "message": "Recovery code saved."
+  },
+  "backupNewRecoveryCodeNotice": {
+    "message": "Copy and keep this recovery code somewhere safe. If you ever lose this code, your encrypted backups cannot be recovered."
+  },
+  "backupAutoEnabledLabel": {
+    "message": "Automatic backup"
+  },
+  "backupAutoEnabledHelp": {
+    "message": "Automatically back up your data once a day when changes are detected."
+  },
+  "backupActionsTitle": {
+    "message": "Actions"
+  },
+  "backupNowBtn": {
+    "message": "Back up now"
+  },
+  "backupRestoreBtn": {
+    "message": "Restore from backup"
+  },
+  "backupExportLocalBtn": {
+    "message": "Export local backup"
+  },
+  "backupNothingChanged": {
+    "message": "Nothing has changed"
+  },
+  "backupSuccess": {
+    "message": "Backup completed successfully."
+  },
+  "backupRestoreConfirm": {
+    "message": "Remote backup contains $1 pages, $2 highlights, and $3 site rules. Restore this backup and replace your local data?"
+  },
+  "backupSafetySnapshotFailedConfirm": {
+    "message": "Could not create a safety snapshot before restoring. If you continue, your existing highlights cannot be recovered if anything fails. Continue restoring anyway?"
+  },
+  "backupRestoreSuccess": {
+    "message": "Backup restored successfully."
+  },
+  "backupRestoreSuccessWithSnapshot": {
+    "message": "Backup restored successfully. Safety snapshot saved to $1."
+  },
+  "backupExportSuccess": {
+    "message": "Local backup exported to $1."
+  },
+  "backupStatusTitle": {
+    "message": "Status"
+  },
+  "backupLastSuccessLabel": {
+    "message": "Last backup: $1"
+  },
+  "backupNeverRun": {
+    "message": "Never"
+  },
+  "backupStatusUpToDate": {
+    "message": "Up to date"
+  },
+  "backupStatusPending": {
+    "message": "Changes pending"
+  },
+  "backupLastErrorLabel": {
+    "message": "Last error: $1"
+  },
+  "backupErrorNotConfigured": {
+    "message": "Backup destination is not configured."
+  },
+  "backupErrorNoRecoveryCode": {
+    "message": "No recovery code is set."
+  },
+  "backupErrorAuthFailed": {
+    "message": "Authentication failed. Please check your token or password."
+  },
+  "backupErrorForbidden": {
+    "message": "Access forbidden. Check your permissions."
+  },
+  "backupErrorNotFound": {
+    "message": "Remote backup file was not found."
+  },
+  "backupErrorConflict": {
+    "message": "Remote backup conflict. The remote file was modified elsewhere."
+  },
+  "backupErrorDirectoryMissing": {
+    "message": "Target directory does not exist on the remote server."
+  },
+  "backupErrorTooLarge": {
+    "message": "Backup file is too large for the remote destination."
+  },
+  "backupErrorRateLimited": {
+    "message": "Request rate limit exceeded. Please try again later."
+  },
+  "backupErrorServerError": {
+    "message": "Remote server encountered an error."
+  },
+  "backupErrorNetwork": {
+    "message": "Network error occurred."
+  },
+  "backupErrorTimeout": {
+    "message": "Backup request timed out."
+  },
+  "backupErrorTls": {
+    "message": "Secure connection (TLS) error."
+  },
+  "backupErrorInsecureTransport": {
+    "message": "Insecure HTTP connection is not permitted."
+  },
+  "backupErrorCrossHostRedirect": {
+    "message": "Cross-host redirect blocked for security."
+  },
+  "backupErrorTruncated": {
+    "message": "Backup data was truncated or incomplete."
+  },
+  "backupErrorDecryptFailed": {
+    "message": "Decryption failed. The recovery code may be incorrect."
+  },
+  "backupErrorInvalidFormat": {
+    "message": "Invalid backup or recovery code format."
+  },
+  "backupErrorUnsupportedVersion": {
+    "message": "Unsupported backup version."
+  },
+  "backupErrorInsecureHttpBlocked": {
+    "message": "Plain HTTP is blocked. Enable allow HTTP or use HTTPS."
+  },
+  "backupErrorDownloadFailed": {
+    "message": "Failed to download remote backup."
+  },
+  "backupErrorSafetySnapshotFailed": {
+    "message": "Failed to create a local safety snapshot before restore."
+  },
+  "backupErrorStorageError": {
+    "message": "Storage error occurred while processing backup."
+  },
+  "backupErrorConfirmRequired": {
+    "message": "Confirmation is required to perform this action."
+  },
+  "backupErrorGeneric": {
+    "message": "Backup operation failed."
+  }
 }

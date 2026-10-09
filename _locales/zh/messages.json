@@ -30,10 +30,10 @@
     "message": "无法确认页面是否就绪。请选择高亮重试。"
   },
   "extensionName": {
-    "message": "Marks: 文本高亮器"
+    "message": "Marks Local"
   },
   "extensionDescription": {
-    "message": "一个可以在网页上选择文本并用颜色标记的扩展程序"
+    "message": "本地优先的网页划线扩展，可选加密备份到 GitHub Gist 或 WebDAV。"
   },
   "highlightText": {
     "message": "高亮文本"
@@ -202,7 +202,8 @@
   },
   "moreOptions": {
     "message": "更多"
-  },  "refresh": {
+  },
+  "refresh": {
     "message": "刷新",
     "description": "高亮页面列表刷新按钮文本"
   },
@@ -296,72 +297,119 @@
   "colorChangeWarning": {
     "message": "更改不会影响已有的高亮显示。"
   },
-  "cloudSyncSection": {
-    "message": "云同步（测试版）"
+  "siteRulesSection": {
+    "message": "网站规则"
   },
-  "cloudSyncIntro": {
-    "message": "通过加密的云备份在设备间同步高亮内容，适用于浏览器同步不可用的平台（例如 Android 版 Firefox）。数据会在上传前在本设备上加密，只有同步码才能解密。"
+  "siteRulesModeLabel": {
+    "message": "高亮网站范围"
   },
-  "cloudSyncGenerateCode": {
-    "message": "生成新代码"
+  "siteRulesModeAll": {
+    "message": "所有网站"
   },
-  "cloudSyncPairCodePlaceholder": {
-    "message": "输入其他设备的同步码"
+  "siteRulesModeAllowlist": {
+    "message": "仅限允许名单中的网站"
   },
-  "cloudSyncPairCodeButton": {
-    "message": "连接"
+  "siteRulesModeAllHelp": {
+    "message": "在所有普通 http 和 https 网页上运行高亮。"
   },
-  "cloudSyncInvalidCode": {
-    "message": "同步码看起来不正确，请检查后重试。"
+  "siteRulesModeAllowlistHelp": {
+    "message": "仅在下方列出的网站上运行高亮。未允许高亮的网页仍会保留之前保存的高亮。"
   },
-  "cloudSyncYourCode": {
-    "message": "我的同步码"
+  "siteRulesEmptyAllowlist": {
+    "message": "允许名单为空，因此所有网页均已关闭高亮。添加网站即可重新开启。"
   },
-  "cloudSyncSaveCodeWarning": {
-    "message": "请妥善保存此代码，一旦丢失将无法恢复此数据。"
+  "siteRulesCount": {
+    "message": "名单中共有 $1 个网站"
   },
-  "cloudSyncCopyCode": {
-    "message": "复制"
+  "siteRulesSearchPlaceholder": {
+    "message": "搜索网站"
   },
-  "cloudSyncShowCode": {
-    "message": "显示"
+  "siteRulesAddPlaceholder": {
+    "message": "example.org 或 https://example.org/page"
   },
-  "cloudSyncHideCode": {
-    "message": "隐藏"
+  "siteRulesAddButton": {
+    "message": "添加网站"
   },
-  "cloudSyncCodeCopied": {
-    "message": "已复制！"
+  "siteRulesIncludeSubdomains": {
+    "message": "包含子域名"
   },
-  "cloudSyncCopyFailed": {
-    "message": "无法自动复制。代码已显示在上方，请手动复制。"
+  "siteRulesExactExample": {
+    "message": "精确主机名，例如 arxiv.org"
   },
-  "cloudSyncEnabledLabel": {
-    "message": "云同步"
+  "siteRulesSubdomainExample": {
+    "message": "包含子域名时，www.arxiv.org 也会匹配"
   },
-  "cloudSyncNowButton": {
-    "message": "立即同步"
+  "siteRulesRemove": {
+    "message": "移除"
   },
-  "cloudSyncSyncing": {
-    "message": "同步中..."
+  "siteRulesNoSites": {
+    "message": "名单中暂无网站。"
   },
-  "cloudSyncNeverSynced": {
-    "message": "尚未同步"
+  "siteRulesNoMatches": {
+    "message": "没有符合搜索条件的网站。"
   },
-  "cloudSyncLastSyncedPrefix": {
-    "message": "上次同步: "
+  "siteRulesInvalidHostname": {
+    "message": "请输入有效的网站地址，如 example.org。"
   },
-  "cloudSyncErrorPrefix": {
-    "message": "同步错误: "
+  "siteRulesSaved": {
+    "message": "网站规则已保存。"
   },
-  "cloudSyncResetButton": {
-    "message": "忘记代码"
+  "siteRulesError": {
+    "message": "无法保存网站规则。"
   },
-  "cloudSyncResetConfirm": {
-    "message": "这将断开此设备的连接，并永久忘记同步码。是否继续？"
+  "currentSiteLabel": {
+    "message": "当前网站"
   },
-  "cloudSyncPagesExcludedNotice": {
-    "message": "（由于容量限制，已排除 $1 个较旧的页面）",
-    "description": "Appended to the last-synced status when the oldest pages were dropped from the cloud sync upload to fit the size limit. $1 is the number of excluded pages."
+  "siteStatusEnabled": {
+    "message": "已启用高亮"
+  },
+  "siteStatusDisabled": {
+    "message": "已禁用高亮"
+  },
+  "siteStatusUnsupported": {
+    "message": "此页面不支持高亮"
+  },
+  "siteModeAllNote": {
+    "message": "所有网站模式"
+  },
+  "siteModeAllowlistNote": {
+    "message": "允许名单模式"
+  },
+  "siteEnableButton": {
+    "message": "在此网站启用高亮"
+  },
+  "siteRemoveButton": {
+    "message": "从允许名单移除"
+  },
+  "siteRemovedNote": {
+    "message": "已从允许名单中移除。已保存的高亮仍会保留。"
+  },
+  "siteEnabledNote": {
+    "message": "已在此网站上启用高亮。"
+  },
+  "siteNeedsRefresh": {
+    "message": "刷新此页面以开始在此高亮。"
+  },
+  "siteRefreshButton": {
+    "message": "刷新页面"
+  },
+  "siteActionFailed": {
+    "message": "无法更改网站规则。"
+  },
+  "siteNotAllowedError": {
+    "message": "此网站尚未启用高亮。"
+  },
+  "contextMenuEnableSite": {
+    "message": "在此网站启用高亮"
+  },
+  "contextMenuRemoveSite": {
+    "message": "从允许名单移除"
+  },
+  "siteSubdomainsBadge": {
+    "message": "包含子域名"
+  },
+  "siteExactBadge": {
+    "message": "精确主机名"
   },
   "jumpToHighlight": {
     "message": "跳转到页面中的此高亮"
@@ -451,9 +499,271 @@
   "popupGuideLink": {
     "message": "查看完整使用说明"
   },
-  "copyPageHighlightsLabel": { "message": "复制此页面的所有高亮" },
-  "copyPageHighlightsSuccess": { "message": "已复制此页面的 $1 条高亮。" },
-  "copySearchResultsLabel": { "message": "仅复制搜索结果中匹配的高亮" },
-  "copySearchResultsSuccess": { "message": "已复制 $1 条匹配的高亮。" },
-  "copyHighlightsFailed": { "message": "无法复制高亮，请重试。" }
+  "copyPageHighlightsLabel": {
+    "message": "复制此页面的所有高亮"
+  },
+  "copyPageHighlightsSuccess": {
+    "message": "已复制此页面的 $1 条高亮。"
+  },
+  "copySearchResultsLabel": {
+    "message": "仅复制搜索结果中匹配的高亮"
+  },
+  "copySearchResultsSuccess": {
+    "message": "已复制 $1 条匹配的高亮。"
+  },
+  "copyHighlightsFailed": {
+    "message": "无法复制高亮，请重试。"
+  },
+  "backupSection": {
+    "message": "备份与恢复"
+  },
+  "backupDestinationLabel": {
+    "message": "备份目标"
+  },
+  "backupDestNone": {
+    "message": "无（禁用）"
+  },
+  "backupDestGist": {
+    "message": "GitHub Gist"
+  },
+  "backupDestWebdav": {
+    "message": "WebDAV"
+  },
+  "backupGistTitle": {
+    "message": "GitHub Gist 设置"
+  },
+  "backupGistTokenLabel": {
+    "message": "个人访问令牌 (Personal Access Token)"
+  },
+  "backupGistTokenPlaceholder": {
+    "message": "ghp_..."
+  },
+  "backupTokenSavedPlaceholder": {
+    "message": "•••••••• (已保存)"
+  },
+  "backupGistIdLabel": {
+    "message": "Gist ID（可选）"
+  },
+  "backupGistIdPlaceholder": {
+    "message": "留空可在首次备份时自动创建"
+  },
+  "backupGistIdHelp": {
+    "message": "留空将在首次备份时自动创建私有 Gist。"
+  },
+  "backupGistFilenameLabel": {
+    "message": "文件名"
+  },
+  "backupGistFilenamePlaceholder": {
+    "message": "marks-backup.json"
+  },
+  "backupWebdavTitle": {
+    "message": "WebDAV 设置"
+  },
+  "backupWebdavUrlLabel": {
+    "message": "服务器地址 (URL)"
+  },
+  "backupWebdavUrlPlaceholder": {
+    "message": "https://example.com/remote.php/dav/files/user/"
+  },
+  "backupWebdavUsernameLabel": {
+    "message": "用户名"
+  },
+  "backupWebdavUsernamePlaceholder": {
+    "message": "用户名"
+  },
+  "backupWebdavPasswordLabel": {
+    "message": "密码"
+  },
+  "backupWebdavPasswordPlaceholder": {
+    "message": "密码"
+  },
+  "backupPasswordSavedPlaceholder": {
+    "message": "•••••••• (已保存)"
+  },
+  "backupWebdavInsecureLabel": {
+    "message": "允许普通 HTTP（不推荐）"
+  },
+  "backupWebdavInsecureWarning": {
+    "message": "警告：普通 HTTP 会在本地网络中以明文发送您的恢复密钥和数据。"
+  },
+  "backupSaveConfigBtn": {
+    "message": "保存设置"
+  },
+  "backupTestConnectionBtn": {
+    "message": "测试连接"
+  },
+  "backupConfigSaved": {
+    "message": "备份设置已保存。"
+  },
+  "backupTestSuccess": {
+    "message": "连接测试成功。"
+  },
+  "backupRecoverySectionTitle": {
+    "message": "恢复代码"
+  },
+  "backupRecoveryCodeHelp": {
+    "message": "恢复代码用于在上传前于本地加密您的备份。丢失此代码将导致已有备份无法解密。"
+  },
+  "backupRecoveryCodeLabel": {
+    "message": "当前恢复代码"
+  },
+  "backupCopyCodeBtn": {
+    "message": "复制"
+  },
+  "backupRecoveryCodeCopied": {
+    "message": "恢复代码已复制到剪贴板。"
+  },
+  "backupRegenerateCodeBtn": {
+    "message": "重新生成代码"
+  },
+  "backupConfirmRegenerateCode": {
+    "message": "重新生成恢复代码意味着使用旧代码加密的历史备份将无法再解密。是否确定要生成新代码？"
+  },
+  "backupCodeRegenerated": {
+    "message": "已生成新的恢复代码。"
+  },
+  "backupCustomCodePlaceholder": {
+    "message": "粘贴恢复代码"
+  },
+  "backupUseCustomCodeBtn": {
+    "message": "使用已有恢复代码"
+  },
+  "backupCustomCodeSaved": {
+    "message": "恢复代码已保存。"
+  },
+  "backupNewRecoveryCodeNotice": {
+    "message": "请复制并妥善保管此恢复代码。如果丢失此代码，您的加密备份将永远无法恢复。"
+  },
+  "backupAutoEnabledLabel": {
+    "message": "自动备份"
+  },
+  "backupAutoEnabledHelp": {
+    "message": "当检测到内容变动时，每天自动执行一次备份。"
+  },
+  "backupActionsTitle": {
+    "message": "操作"
+  },
+  "backupNowBtn": {
+    "message": "立即备份"
+  },
+  "backupRestoreBtn": {
+    "message": "从备份恢复"
+  },
+  "backupExportLocalBtn": {
+    "message": "导出本地备份"
+  },
+  "backupNothingChanged": {
+    "message": "没有更改"
+  },
+  "backupSuccess": {
+    "message": "备份已成功完成。"
+  },
+  "backupRestoreConfirm": {
+    "message": "远程备份包含 $1 个页面、$2 条高亮和 $3 条网站规则。是否用此备份替换本地数据？"
+  },
+  "backupSafetySnapshotFailedConfirm": {
+    "message": "恢复前无法创建安全快照。如果继续，一旦出现异常将无法恢复当前的高亮数据。是否仍要继续恢复？"
+  },
+  "backupRestoreSuccess": {
+    "message": "备份恢复成功。"
+  },
+  "backupRestoreSuccessWithSnapshot": {
+    "message": "备份恢复成功。安全快照已保存至 $1。"
+  },
+  "backupExportSuccess": {
+    "message": "本地备份已导出至 $1。"
+  },
+  "backupStatusTitle": {
+    "message": "状态"
+  },
+  "backupLastSuccessLabel": {
+    "message": "上次备份：$1"
+  },
+  "backupNeverRun": {
+    "message": "从未"
+  },
+  "backupStatusUpToDate": {
+    "message": "已是最新"
+  },
+  "backupStatusPending": {
+    "message": "有未备份的更改"
+  },
+  "backupLastErrorLabel": {
+    "message": "上次错误：$1"
+  },
+  "backupErrorNotConfigured": {
+    "message": "未配置备份目标。"
+  },
+  "backupErrorNoRecoveryCode": {
+    "message": "未设置恢复代码。"
+  },
+  "backupErrorAuthFailed": {
+    "message": "身份验证失败，请检查您的令牌或密码。"
+  },
+  "backupErrorForbidden": {
+    "message": "拒绝访问，请检查您的权限。"
+  },
+  "backupErrorNotFound": {
+    "message": "未找到远程备份文件。"
+  },
+  "backupErrorConflict": {
+    "message": "远程备份冲突，远程文件已被其他设备修改。"
+  },
+  "backupErrorDirectoryMissing": {
+    "message": "远程服务器上的目标目录不存在。"
+  },
+  "backupErrorTooLarge": {
+    "message": "备份文件过大，超出远程目标限制。"
+  },
+  "backupErrorRateLimited": {
+    "message": "超出请求频率限制，请稍后再试。"
+  },
+  "backupErrorServerError": {
+    "message": "远程服务器发生错误。"
+  },
+  "backupErrorNetwork": {
+    "message": "发生网络连接错误。"
+  },
+  "backupErrorTimeout": {
+    "message": "备份请求超时。"
+  },
+  "backupErrorTls": {
+    "message": "安全连接 (TLS) 错误。"
+  },
+  "backupErrorInsecureTransport": {
+    "message": "不允许使用不安全的 HTTP 连接。"
+  },
+  "backupErrorCrossHostRedirect": {
+    "message": "出于安全考虑，已阻止跨主机重定向。"
+  },
+  "backupErrorTruncated": {
+    "message": "备份数据被截断或不完整。"
+  },
+  "backupErrorDecryptFailed": {
+    "message": "解密失败，恢复代码可能不正确。"
+  },
+  "backupErrorInvalidFormat": {
+    "message": "备份或恢复代码格式无效。"
+  },
+  "backupErrorUnsupportedVersion": {
+    "message": "不支持的备份版本。"
+  },
+  "backupErrorInsecureHttpBlocked": {
+    "message": "普通 HTTP 已被阻止。请启用“允许 HTTP”或使用 HTTPS。"
+  },
+  "backupErrorDownloadFailed": {
+    "message": "下载远程备份失败。"
+  },
+  "backupErrorSafetySnapshotFailed": {
+    "message": "恢复前创建本地安全快照失败。"
+  },
+  "backupErrorStorageError": {
+    "message": "处理备份时发生存储错误。"
+  },
+  "backupErrorConfirmRequired": {
+    "message": "需要确认才能执行此操作。"
+  },
+  "backupErrorGeneric": {
+    "message": "备份操作失败。"
+  }
 }

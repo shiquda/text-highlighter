@@ -14,14 +14,46 @@ const NAMED_CUSTOM_COLOR = { id: 'custom_2', color: '#82b1ff', colorNumber: 2, c
 
 const ALL_COLORS = [BUILT_IN_COLOR, CUSTOM_COLOR, NAMED_CUSTOM_COLOR];
 
-const SYNC_CODE = 'ABCD-EFGH-IJKL';
+const DEFAULT_BACKUP_STATE = {
+  destination: 'none',
+  autoEnabled: false,
+  hasRecoveryCode: false,
+  recoveryCode: null,
+  configured: false,
+  upToDate: true,
+  lastSuccessAt: null,
+  lastError: null,
+  gist: { hasToken: false, gistId: '', filename: 'marks-backup.json' },
+  webdav: { url: '', username: '', hasPassword: false, allowInsecureHttp: false },
+};
+
 
 describe('settings', () => {
   let openSettings;
+  const activeTimers = new Set();
+  const realSetTimeout = globalThis.setTimeout;
+  const realClearTimeout = globalThis.clearTimeout;
 
   beforeAll(async () => {
     stubPageEnvironment();
+    globalThis.setTimeout = (fn, delay, ...args) => {
+      const id = realSetTimeout(() => {
+        activeTimers.delete(id);
+        fn(...args);
+      }, delay);
+      activeTimers.add(id);
+      return id;
+    };
+    globalThis.clearTimeout = (id) => {
+      activeTimers.delete(id);
+      realClearTimeout(id);
+    };
     openSettings = await loadPageScript(() => import('../settings.js'));
+  });
+
+  afterAll(() => {
+    globalThis.setTimeout = realSetTimeout;
+    globalThis.clearTimeout = realClearTimeout;
   });
 
   beforeEach(() => {
@@ -34,6 +66,13 @@ describe('settings', () => {
     respondToBackground({});
   });
 
+  afterEach(() => {
+    for (const id of activeTimers) {
+      realClearTimeout(id);
+    }
+    activeTimers.clear();
+  });
+
   /**
    * Answer the page's background messages. `overrides` maps an action to its
    * response; anything not named gets a bare success.
@@ -42,7 +81,8 @@ describe('settings', () => {
     const defaults = {
       getColors: { success: true, colors: ALL_COLORS },
       getShortcutColorMap: { success: true, shortcutColorMap: {} },
-      getCloudSyncStatus: { success: true, code: null },
+      getSitePolicy: { success: true, policy: { version: 1, mode: 'all', sites: [] } },
+      getBackupState: { success: true, state: DEFAULT_BACKUP_STATE },
     };
     const responses = { ...defaults, ...overrides };
 
@@ -93,6 +133,14 @@ describe('settings', () => {
 
   function byId(id) {
     return document.getElementById(id);
+  }
+
+  function siteRows() {
+    return [...document.querySelectorAll('#site-rules-list .site-rule-row')];
+  }
+
+  function siteHostnames() {
+    return siteRows().map(row => row.querySelector('.site-rule-hostname').textContent);
   }
 
   // ===================================================================
@@ -503,182 +551,546 @@ describe('settings', () => {
   });
 
   // ===================================================================
-  // Cloud sync
+  // Site rules
   // ===================================================================
 
-  describe('cloud sync', () => {
-    function connected(status = {}) {
-      return { success: true, code: SYNC_CODE, enabled: true, ...status };
+  describe('site rules', () => {
+    function policy(overrides = {}) {
+      return {
+        success: true,
+        policy: {
+          version: 1,
+          mode: 'all',
+          sites: [],
+          ...overrides,
+        },
+      };
     }
 
-    it('offers setup while no code is paired', async () => {
+    it('renders the all-websites mode by default and hides the empty allowlist warning', async () => {
+      respondToBackground({ getSitePolicy: policy({ mode: 'all', sites: [] }) });
       await openSettings();
 
-      expect(byId('cloud-sync-setup').style.display).toBe('');
-      expect(byId('cloud-sync-connected').style.display).toBe('none');
+      expect(byId('site-rules-mode-all').checked).toBe(true);
+      expect(byId('site-rules-mode-allowlist').checked).toBe(false);
+      expect(byId('site-rules-empty-warning').style.display).toBe('none');
+      expect(byId('site-rules-empty').style.display).toBe('');
+      expect(byId('site-rules-empty').textContent).toBe('siteRulesNoSites');
     });
 
-    it('shows the connected view once a code exists', async () => {
-      respondToBackground({ getCloudSyncStatus: connected() });
+    it('shows the empty allowlist warning only when mode is allowlist and the list is empty', async () => {
+      respondToBackground({ getSitePolicy: policy({ mode: 'allowlist', sites: [] }) });
       await openSettings();
 
-      expect(byId('cloud-sync-setup').style.display).toBe('none');
-      expect(byId('cloud-sync-connected').style.display).toBe('');
-      expect(byId('cloud-sync-toggle').checked).toBe(true);
-    });
+      expect(byId('site-rules-mode-allowlist').checked).toBe(true);
+      expect(byId('site-rules-empty-warning').style.display).toBe('');
 
-    it('masks all but the first and last group of the code', async () => {
-      respondToBackground({ getCloudSyncStatus: connected() });
-      await openSettings();
-
-      expect(byId('cloud-sync-code-display').textContent).toBe('ABCD-••••-IJKL');
-    });
-
-    it('reveals the code on request, and hides it again', async () => {
-      respondToBackground({ getCloudSyncStatus: connected() });
-      await openSettings();
-      const reveal = byId('cloud-sync-toggle-visibility-btn');
-
-      reveal.click();
-      expect(byId('cloud-sync-code-display').textContent).toBe(SYNC_CODE);
-
-      reveal.click();
-      expect(byId('cloud-sync-code-display').textContent).toBe('ABCD-••••-IJKL');
-    });
-
-    it('generates a code and switches to the connected view', async () => {
-      await openSettings();
+      // When allowlist has sites, warning must be hidden
       respondToBackground({
-        enableCloudSync: { success: true },
-        getCloudSyncStatus: connected(),
+        getSitePolicy: policy({
+          mode: 'allowlist',
+          sites: [{ hostname: 'arxiv.org', includeSubdomains: true }],
+        }),
       });
-
-      byId('cloud-sync-generate-btn').click();
-      await flush();
-
-      expect(backgroundMessages('enableCloudSync')).toHaveLength(1);
-      expect(byId('cloud-sync-connected').style.display).toBe('');
+      await openSettings();
+      expect(byId('site-rules-empty-warning').style.display).toBe('none');
     });
 
-    it('pairs with a typed code and clears the field', async () => {
-      await openSettings();
+    it('sends setSitePolicyMode when changing the mode radio and updates the warning', async () => {
       respondToBackground({
-        pairCloudSync: { success: true },
-        getCloudSyncStatus: connected(),
+        getSitePolicy: policy({ mode: 'all', sites: [] }),
+        setSitePolicyMode: policy({ mode: 'allowlist', sites: [] }),
       });
+      await openSettings();
 
-      byId('cloud-sync-pair-input').value = `  ${SYNC_CODE}  `;
-      byId('cloud-sync-pair-btn').click();
+      expect(byId('site-rules-empty-warning').style.display).toBe('none');
+
+      const allowlistRadio = byId('site-rules-mode-allowlist');
+      allowlistRadio.checked = true;
+      allowlistRadio.dispatchEvent(new Event('change'));
       await flush();
 
-      expect(lastMessage('pairCloudSync')).toEqual({ action: 'pairCloudSync', code: SYNC_CODE });
-      expect(byId('cloud-sync-pair-input').value).toBe('');
+      expect(lastMessage('setSitePolicyMode')).toEqual({
+        action: 'setSitePolicyMode',
+        mode: 'allowlist',
+      });
+      expect(byId('site-rules-empty-warning').style.display).toBe('');
     });
 
-    it('ignores a pair request with an empty field', async () => {
-      await openSettings();
-
-      byId('cloud-sync-pair-input').value = '   ';
-      byId('cloud-sync-pair-btn').click();
-      await flush();
-
-      expect(backgroundMessages('pairCloudSync')).toHaveLength(0);
-    });
-
-    it('warns and keeps the typed code when pairing is rejected', async () => {
-      await openSettings();
-      respondToBackground({ pairCloudSync: { success: false } });
-
-      byId('cloud-sync-pair-input').value = 'WRON-GCOD-EEEE';
-      byId('cloud-sync-pair-btn').click();
-      await flush();
-
-      expect(alertText()).toBe('cloudSyncInvalidCode');
-      expect(byId('cloud-sync-pair-input').value).toBe('WRON-GCOD-EEEE');
-    });
-
-    it('disconnects when the toggle is switched off', async () => {
-      respondToBackground({ getCloudSyncStatus: connected() });
-      await openSettings();
-
-      const toggle = byId('cloud-sync-toggle');
-      toggle.checked = false;
-      toggle.dispatchEvent(new Event('change'));
-      await flush();
-
-      expect(backgroundMessages('disableCloudSync')).toHaveLength(1);
-    });
-
-    it('re-pairs the stored code when the toggle is switched back on', async () => {
-      respondToBackground({ getCloudSyncStatus: connected({ enabled: false }) });
-      await openSettings();
-
-      const toggle = byId('cloud-sync-toggle');
-      toggle.checked = true;
-      toggle.dispatchEvent(new Event('change'));
-      await flush();
-
-      expect(lastMessage('pairCloudSync')).toEqual({ action: 'pairCloudSync', code: SYNC_CODE });
-    });
-
-    it('runs a sync on request', async () => {
-      respondToBackground({ getCloudSyncStatus: connected() });
-      await openSettings();
-
-      byId('cloud-sync-now-btn').click();
-      await flush();
-
-      expect(backgroundMessages('triggerCloudSync')).toHaveLength(1);
-      expect(byId('cloud-sync-now-btn').disabled).toBe(false);
-    });
-
-    it('resets the code only after the confirmation is accepted', async () => {
-      respondToBackground({ getCloudSyncStatus: connected() });
-      await openSettings();
-
-      byId('cloud-sync-reset-btn').click();
-      await confirmModal(true);
-
-      expect(backgroundMessages('resetCloudSyncCode')).toHaveLength(1);
-    });
-
-    it('keeps the code when the reset confirmation is cancelled', async () => {
-      respondToBackground({ getCloudSyncStatus: connected() });
-      await openSettings();
-
-      byId('cloud-sync-reset-btn').click();
-      await confirmModal(false);
-
-      expect(backgroundMessages('resetCloudSyncCode')).toHaveLength(0);
-    });
-
-    it('reports a sync error in the status line', async () => {
-      respondToBackground({ getCloudSyncStatus: connected({ lastError: 'quota exceeded' }) });
-      await openSettings();
-
-      const status = byId('cloud-sync-status-text');
-      expect(status.textContent).toContain('quota exceeded');
-      expect(status.classList.contains('cloud-sync-error-text')).toBe(true);
-    });
-
-    it('says nothing has synced yet when there is no timestamp', async () => {
-      respondToBackground({ getCloudSyncStatus: connected() });
-      await openSettings();
-
-      expect(byId('cloud-sync-status-text').textContent).toBe('cloudSyncNeverSynced');
-    });
-
-    it('notes how many pages the size limit left out', async () => {
+    it('sends the raw input to addSiteRule and clears the field on success', async () => {
       respondToBackground({
-        getCloudSyncStatus: connected({
-          lastSyncedAt: '2026-06-01T00:00:00.000Z',
-          lastTrimmedCount: 3,
+        getSitePolicy: policy({ mode: 'all', sites: [] }),
+        addSiteRule: policy({
+          mode: 'all',
+          sites: [{ hostname: 'arxiv.org', includeSubdomains: true }],
         }),
       });
       await openSettings();
 
-      expect(byId('cloud-sync-status-text').textContent)
-        .toContain('cloudSyncPagesExcludedNotice');
+      const rawUrl = 'https://arxiv.org/abs/1234.5678';
+      byId('site-rules-add-input').value = rawUrl;
+      byId('site-rules-include-subdomains').checked = true;
+      byId('site-rules-add-btn').click();
+      await flush();
+
+      expect(lastMessage('addSiteRule')).toEqual({
+        action: 'addSiteRule',
+        hostname: rawUrl,
+        includeSubdomains: true,
+      });
+      expect(byId('site-rules-add-input').value).toBe('');
+      expect(siteHostnames()).toEqual(['arxiv.org']);
+      expect(siteRows()[0].querySelector('.site-rule-badge').textContent).toBe('siteSubdomainsBadge');
+    });
+
+    it('shows siteRulesInvalidHostname and keeps typed input when adding fails', async () => {
+      respondToBackground({
+        getSitePolicy: policy({ mode: 'all', sites: [] }),
+        addSiteRule: { success: false, code: 'site_invalid_hostname' },
+      });
+      await openSettings();
+
+      const badInput = 'not a valid url!';
+      byId('site-rules-add-input').value = badInput;
+      byId('site-rules-add-btn').click();
+      await flush();
+
+      expect(lastMessage('addSiteRule')).toEqual({
+        action: 'addSiteRule',
+        hostname: badInput,
+        includeSubdomains: false,
+      });
+      expect(byId('site-rules-error').style.display).not.toBe('none');
+      expect(byId('site-rules-error').textContent).toBe('siteRulesInvalidHostname');
+      expect(byId('site-rules-add-input').value).toBe(badInput);
+    });
+
+    it('filters rows client-side via the search box and displays no-matches when empty', async () => {
+      respondToBackground({
+        getSitePolicy: policy({
+          mode: 'all',
+          sites: [
+            { hostname: 'arxiv.org', includeSubdomains: true },
+            { hostname: 'github.com', includeSubdomains: false },
+            { hostname: 'wikipedia.org', includeSubdomains: true },
+          ],
+        }),
+      });
+      await openSettings();
+
+      expect(siteHostnames()).toEqual(['arxiv.org', 'github.com', 'wikipedia.org']);
+
+      const searchInput = byId('site-rules-search-input');
+      searchInput.value = 'hub';
+      searchInput.dispatchEvent(new Event('input'));
+      await flush();
+
+      expect(siteHostnames()).toEqual(['github.com']);
+      expect(byId('site-rules-empty').style.display).toBe('none');
+
+      searchInput.value = 'nonexistent';
+      searchInput.dispatchEvent(new Event('input'));
+      await flush();
+
+      expect(siteHostnames()).toHaveLength(0);
+      expect(byId('site-rules-empty').style.display).toBe('');
+      expect(byId('site-rules-empty').textContent).toBe('siteRulesNoMatches');
+
+      searchInput.value = '';
+      searchInput.dispatchEvent(new Event('input'));
+      await flush();
+
+      expect(siteHostnames()).toEqual(['arxiv.org', 'github.com', 'wikipedia.org']);
+    });
+
+    it('sends removeSiteRule on remove button click and re-renders from policy', async () => {
+      respondToBackground({
+        getSitePolicy: policy({
+          mode: 'all',
+          sites: [{ hostname: 'arxiv.org', includeSubdomains: false }],
+        }),
+        removeSiteRule: policy({
+          mode: 'all',
+          sites: [],
+        }),
+      });
+      await openSettings();
+
+      expect(siteHostnames()).toEqual(['arxiv.org']);
+
+      const removeBtn = siteRows()[0].querySelector('.site-rule-remove-btn');
+      removeBtn.click();
+      await flush();
+
+      expect(lastMessage('removeSiteRule')).toEqual({
+        action: 'removeSiteRule',
+        hostname: 'arxiv.org',
+      });
+      expect(siteHostnames()).toHaveLength(0);
+      expect(byId('site-rules-empty').style.display).toBe('');
+      expect(byId('site-rules-empty').textContent).toBe('siteRulesNoSites');
+    });
+
+    it('sends setSiteRuleSubdomains when toggling the subdomain checkbox', async () => {
+      respondToBackground({
+        getSitePolicy: policy({
+          mode: 'all',
+          sites: [{ hostname: 'arxiv.org', includeSubdomains: false }],
+        }),
+        setSiteRuleSubdomains: policy({
+          mode: 'all',
+          sites: [{ hostname: 'arxiv.org', includeSubdomains: true }],
+        }),
+      });
+      await openSettings();
+
+      expect(siteRows()[0].querySelector('.site-rule-badge').textContent).toBe('siteExactBadge');
+
+      const checkbox = siteRows()[0].querySelector('.site-rule-subdomain-toggle');
+      expect(checkbox.checked).toBe(false);
+
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event('change'));
+      await flush();
+
+      expect(lastMessage('setSiteRuleSubdomains')).toEqual({
+        action: 'setSiteRuleSubdomains',
+        hostname: 'arxiv.org',
+        includeSubdomains: true,
+      });
+      expect(siteRows()[0].querySelector('.site-rule-badge').textContent).toBe('siteSubdomainsBadge');
+    });
+  });
+
+  // ===================================================================
+  // Backup & Restore
+  // ===================================================================
+  describe('backup', () => {
+    it('sends setBackupDestination when destination radio is changed', async () => {
+      respondToBackground({
+        setBackupDestination: {
+          success: true,
+          state: { ...DEFAULT_BACKUP_STATE, destination: 'gist' },
+        },
+      });
+      await openSettings();
+
+      const gistRadio = byId('backup-dest-gist');
+      gistRadio.checked = true;
+      gistRadio.dispatchEvent(new Event('change'));
+      await flush();
+
+      expect(lastMessage('setBackupDestination')).toEqual({
+        action: 'setBackupDestination',
+        destination: 'gist',
+      });
+      expect(byId('backup-gist-config').style.display).not.toBe('none');
+    });
+
+    it('shows the first generatedRecoveryCode prominently', async () => {
+      respondToBackground({
+        setBackupDestination: {
+          success: true,
+          state: {
+            ...DEFAULT_BACKUP_STATE,
+            destination: 'gist',
+            hasRecoveryCode: true,
+            recoveryCode: 'fresh-code-xyz',
+          },
+          generatedRecoveryCode: 'fresh-code-xyz',
+        },
+      });
+      await openSettings();
+
+      const gistRadio = byId('backup-dest-gist');
+      gistRadio.checked = true;
+      gistRadio.dispatchEvent(new Event('change'));
+      await flush();
+
+      expect(byId('backup-new-code-banner').style.display).not.toBe('none');
+      expect(byId('backup-generated-code-value').textContent).toBe('fresh-code-xyz');
+      expect(byId('backup-recovery-code-display').textContent).toBe('fresh-code-xyz');
+    });
+
+    it('sends setBackupAutoEnabled when auto toggle is toggled', async () => {
+      respondToBackground({
+        setBackupAutoEnabled: {
+          success: true,
+          state: { ...DEFAULT_BACKUP_STATE, autoEnabled: true },
+        },
+      });
+      await openSettings();
+
+      const toggle = byId('backup-auto-toggle');
+      expect(toggle.checked).toBe(false);
+
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event('change'));
+      await flush();
+
+      expect(lastMessage('setBackupAutoEnabled')).toEqual({
+        action: 'setBackupAutoEnabled',
+        enabled: true,
+      });
+    });
+
+    it('reports the unchanged case differently from the uploaded case on back up now', async () => {
+      respondToBackground({
+        runBackupNow: {
+          success: true,
+          state: DEFAULT_BACKUP_STATE,
+          result: { ok: true, uploaded: false },
+        },
+      });
+      await openSettings();
+
+      byId('backup-now-btn').click();
+      await flush();
+
+      const unchangedFeedback = byId('backup-action-feedback').textContent;
+      expect(unchangedFeedback).not.toBe('');
+
+      respondToBackground({
+        runBackupNow: {
+          success: true,
+          state: DEFAULT_BACKUP_STATE,
+          result: { ok: true, uploaded: true },
+        },
+      });
+
+      byId('backup-now-btn').click();
+      await flush();
+
+      const uploadedFeedback = byId('backup-action-feedback').textContent;
+      expect(uploadedFeedback).not.toBe('');
+      expect(uploadedFeedback).not.toEqual(unchangedFeedback);
+    });
+
+    it('asks for confirmation before restoreFromRemoteBackup is sent with confirm:true', async () => {
+      respondToBackground({
+        previewRemoteBackup: {
+          success: true,
+          preview: {
+            exportedAt: 12345678,
+            pageCount: 3,
+            highlightCount: 15,
+            siteCount: 2,
+            mode: 'all',
+          },
+        },
+        restoreFromRemoteBackup: {
+          success: true,
+          summary: {},
+          safetySnapshot: { ok: true, filename: 'safety.json' },
+          state: DEFAULT_BACKUP_STATE,
+        },
+      });
+      await openSettings();
+
+      // Case 1: Cancel confirmation
+      const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValueOnce(false);
+      byId('backup-restore-btn').click();
+      await flush();
+
+      expect(lastMessage('previewRemoteBackup')).toEqual({ action: 'previewRemoteBackup' });
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
+      expect(confirmSpy).toHaveBeenCalledWith('backupRestoreConfirm');
+      expect(chrome.i18n.getMessage).toHaveBeenCalledWith('backupRestoreConfirm', ['3', '15', '2']);
+      expect(backgroundMessages('restoreFromRemoteBackup')).toHaveLength(0);
+
+      // Case 2: Accept confirmation
+      confirmSpy.mockReturnValueOnce(true);
+      byId('backup-restore-btn').click();
+      await flush();
+
+      expect(confirmSpy).toHaveBeenCalledTimes(2);
+      expect(lastMessage('restoreFromRemoteBackup')).toEqual({
+        action: 'restoreFromRemoteBackup',
+        confirm: true,
+      });
+
+      confirmSpy.mockRestore();
+    });
+
+    it('asks a second time on backup_safety_snapshot_failed and only then sends acceptMissingSnapshot:true', async () => {
+      respondToBackground({
+        previewRemoteBackup: {
+          success: true,
+          preview: { pageCount: 1, highlightCount: 2, siteCount: 1 },
+        },
+        restoreFromRemoteBackup: {
+          success: false,
+          code: 'backup_safety_snapshot_failed',
+          error: 'Snapshot error',
+        },
+      });
+      await openSettings();
+
+      // First run: User accepts first confirmation, but rejects the second prompt
+      const confirmSpy = jest.spyOn(window, 'confirm')
+        .mockReturnValueOnce(true)   // first prompt (restore confirm)
+        .mockReturnValueOnce(false); // second prompt (missing snapshot confirm)
+
+      byId('backup-restore-btn').click();
+      await flush();
+
+      expect(confirmSpy).toHaveBeenCalledTimes(2);
+      expect(backgroundMessages('restoreFromRemoteBackup')).toHaveLength(1);
+      expect(lastMessage('restoreFromRemoteBackup')).toEqual({
+        action: 'restoreFromRemoteBackup',
+        confirm: true,
+      });
+
+      // Second run: User accepts first prompt and accepts second prompt
+      chrome.runtime.sendMessage.mockImplementation(message => {
+        if (message.action === 'restoreFromRemoteBackup') {
+          if (!message.acceptMissingSnapshot) {
+            return Promise.resolve({
+              success: false,
+              code: 'backup_safety_snapshot_failed',
+              error: 'Snapshot error',
+            });
+          }
+          return Promise.resolve({
+            success: true,
+            summary: {},
+            safetySnapshot: { ok: true, filename: 'safety-final.json' },
+            state: DEFAULT_BACKUP_STATE,
+          });
+        }
+        return Promise.resolve({
+          success: true,
+          preview: { pageCount: 1, highlightCount: 2, siteCount: 1 },
+        });
+      });
+
+      confirmSpy
+        .mockReturnValueOnce(true)  // first prompt
+        .mockReturnValueOnce(true); // second prompt
+
+      byId('backup-restore-btn').click();
+      await flush();
+
+      expect(confirmSpy).toHaveBeenCalledTimes(4);
+      expect(lastMessage('restoreFromRemoteBackup')).toEqual({
+        action: 'restoreFromRemoteBackup',
+        confirm: true,
+        acceptMissingSnapshot: true,
+      });
+      expect(chrome.i18n.getMessage).toHaveBeenCalledWith('backupRestoreSuccessWithSnapshot', ['safety-final.json']);
+      expect(byId('backup-action-feedback').textContent).toBe('backupRestoreSuccessWithSnapshot');
+      confirmSpy.mockRestore();
+    });
+
+    it('renders the last error in the status line', async () => {
+      respondToBackground({
+        getBackupState: {
+          success: true,
+          state: {
+            ...DEFAULT_BACKUP_STATE,
+            lastError: {
+              code: 'backup_network',
+              message: 'Failed to connect',
+              at: 12345678,
+            },
+          },
+        },
+      });
+      await openSettings();
+
+      const lastErrorEl = byId('backup-status-last-error');
+      expect(lastErrorEl.style.display).not.toBe('none');
+      expect(lastErrorEl.textContent).toBe('backupErrorNetwork');
+    });
+
+    it('saves gist config without token when token input is empty', async () => {
+      respondToBackground({
+        getBackupState: {
+          success: true,
+          state: {
+            ...DEFAULT_BACKUP_STATE,
+            destination: 'gist',
+            gist: { hasToken: true, gistId: 'g123', filename: 'marks.json' },
+          },
+        },
+        saveGistConfig: { success: true, state: DEFAULT_BACKUP_STATE },
+      });
+      await openSettings();
+
+      expect(byId('backup-gist-token').placeholder).toBe('backupTokenSavedPlaceholder');
+      byId('backup-gist-id').value = 'g999';
+      byId('backup-gist-save-btn').click();
+      await flush();
+
+      expect(lastMessage('saveGistConfig')).toEqual({
+        action: 'saveGistConfig',
+        gistId: 'g999',
+        filename: 'marks.json',
+      });
+    });
+
+    it('saves webdav config sending password only when entered', async () => {
+      respondToBackground({
+        getBackupState: {
+          success: true,
+          state: {
+            ...DEFAULT_BACKUP_STATE,
+            destination: 'webdav',
+            webdav: { url: 'https://dav.test', username: 'alice', hasPassword: true, allowInsecureHttp: false },
+          },
+        },
+        saveWebdavConfig: { success: true, state: DEFAULT_BACKUP_STATE },
+      });
+      await openSettings();
+
+      expect(byId('backup-webdav-password').placeholder).toBe('backupPasswordSavedPlaceholder');
+      byId('backup-webdav-password').value = 'secret123';
+      byId('backup-webdav-save-btn').click();
+      await flush();
+
+      expect(lastMessage('saveWebdavConfig')).toEqual({
+        action: 'saveWebdavConfig',
+        url: 'https://dav.test',
+        username: 'alice',
+        password: 'secret123',
+        allowInsecureHttp: false,
+      });
+    });
+
+    it('tests backup connection and shows success feedback', async () => {
+      respondToBackground({
+        getBackupState: {
+          success: true,
+          state: { ...DEFAULT_BACKUP_STATE, destination: 'gist' },
+        },
+        testBackupConnection: { success: true, state: DEFAULT_BACKUP_STATE },
+      });
+      await openSettings();
+
+      byId('backup-gist-test-btn').click();
+      await flush();
+
+      expect(lastMessage('testBackupConnection')).toEqual({ action: 'testBackupConnection' });
+      expect(byId('backup-gist-feedback').textContent).toBe('backupTestSuccess');
+    });
+
+    it('exports local backup and reports the filename', async () => {
+      respondToBackground({
+        exportLocalBackup: {
+          success: true,
+          filename: 'marks-export-2026.json',
+          encrypted: true,
+          state: DEFAULT_BACKUP_STATE,
+        },
+      });
+      await openSettings();
+
+      byId('backup-export-local-btn').click();
+      await flush();
+
+      expect(lastMessage('exportLocalBackup')).toEqual({ action: 'exportLocalBackup' });
+      expect(chrome.i18n.getMessage).toHaveBeenCalledWith('backupExportSuccess', ['marks-export-2026.json']);
+      expect(byId('backup-action-feedback').textContent).toBe('backupExportSuccess');
     });
   });
 
@@ -689,9 +1101,9 @@ describe('settings', () => {
   // Every test in this file opens the page again, and each open leaves another
   // focus listener on the shared window - so the absolute counts here are the
   // number of opens so far, not one. The shape of a single reload still shows in
-  // their ratio: one colour map and one sync status per listener, and two colour
+  // their ratio: one colour map and one policy per listener, and two colour
   // reads, since the shortcut list fetches them again for its dropdowns.
-  it('reloads colors, shortcuts and sync status when the window regains focus', async () => {
+  it('reloads colors, shortcuts and site policy when the window regains focus', async () => {
     await openSettings();
     jest.clearAllMocks();
     respondToBackground({});
@@ -701,7 +1113,7 @@ describe('settings', () => {
 
     const reloads = backgroundMessages('getShortcutColorMap').length;
     expect(reloads).toBeGreaterThan(0);
-    expect(backgroundMessages('getCloudSyncStatus')).toHaveLength(reloads);
+    expect(backgroundMessages('getSitePolicy')).toHaveLength(reloads);
     expect(backgroundMessages('getColors')).toHaveLength(reloads * 2);
   });
 });

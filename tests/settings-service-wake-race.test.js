@@ -29,17 +29,21 @@ describe('settings-service palette changes on a waking worker', () => {
 
   it('keeps a colour added while the initial load is in flight', async () => {
     const service = await freshService();
-    // The initial load reads storage.sync first, and that read is slow.
-    const syncRead = deferred();
-    chrome.storage.sync.get.mockImplementationOnce(() => syncRead.promise);
-    // Whatever storage.local is asked for, it holds the one existing colour.
-    chrome.storage.local.get.mockImplementation(() => Promise.resolve({ customColors: [existing] }));
+    // The load's own read is the slow one; everything after it answers with the
+    // one stored colour.
+    const firstRead = deferred();
+    let reads = 0;
+    chrome.storage.local.get.mockImplementation(() => {
+      reads += 1;
+      if (reads === 1) return firstRead.promise;
+      return Promise.resolve({ customColors: [existing] });
+    });
 
     const load = service.loadCustomColors();
     const adding = service.addCustomColor('#222222');
 
-    // The sync read answers with the list from before the add.
-    syncRead.resolve({ settings: { customColors: [existing] } });
+    // The stored list answers with what was there before the add.
+    firstRead.resolve({ customColors: [existing] });
     const [, result] = await Promise.all([load, adding]);
 
     const colours = service.getCurrentColors().map(c => c.color);
@@ -69,27 +73,8 @@ describe('settings-service palette changes on a waking worker', () => {
     expect(colours).not.toContain('#222222');
   });
 
-  it('lets settings from sync replace the loaded list rather than race it', async () => {
-    const service = await freshService();
-    const syncRead = deferred();
-    chrome.storage.sync.get.mockImplementationOnce(() => syncRead.promise);
-    chrome.storage.local.get.mockImplementation(() => Promise.resolve({ customColors: [existing] }));
-
-    const load = service.loadCustomColors();
-    const applying = service.applySettingsFromSync({
-      customColors: [{ id: 'custom_9', colorNumber: 9, color: '#999999' }],
-    });
-    syncRead.resolve({ settings: { customColors: [existing] } });
-    await Promise.all([load, applying]);
-
-    const colours = service.getCurrentColors().map(c => c.color);
-    expect(colours).toContain('#999999');
-    expect(colours).not.toContain('#111111');
-  });
-
   it('still changes the palette when the load itself failed', async () => {
     const service = await freshService();
-    chrome.storage.sync.get.mockImplementationOnce(() => Promise.reject(new Error('sync down')));
     chrome.storage.local.get
       .mockImplementationOnce(() => Promise.reject(new Error('local down')))
       .mockImplementation(() => Promise.resolve({ customColors: [existing] }));

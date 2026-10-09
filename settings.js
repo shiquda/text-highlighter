@@ -3,7 +3,6 @@ import { debugLog } from './shared/logger.js';
 import { createLocalizedModalHelpers } from './shared/modal.js';
 import { sendToBackground } from './shared/runtime-message.js';
 import { initializeThemeWatcher } from './shared/theme.js';
-import { copyTextToClipboard } from './shared/clipboard.js';
 
 function initializeI18n() {
   const elements = document.querySelectorAll('[data-i18n]');
@@ -454,176 +453,708 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderShortcutsList(commandsResult, colorMap, allColors);
   }
 
-  // --- Cloud Sync ---
-  const cloudSyncSetup = document.getElementById('cloud-sync-setup');
-  const cloudSyncConnected = document.getElementById('cloud-sync-connected');
-  const cloudSyncGenerateBtn = document.getElementById('cloud-sync-generate-btn');
-  const cloudSyncPairInput = document.getElementById('cloud-sync-pair-input');
-  const cloudSyncPairBtn = document.getElementById('cloud-sync-pair-btn');
-  const cloudSyncToggle = document.getElementById('cloud-sync-toggle');
-  const cloudSyncCodeDisplay = document.getElementById('cloud-sync-code-display');
-  const cloudSyncToggleVisibilityBtn = document.getElementById('cloud-sync-toggle-visibility-btn');
-  const cloudSyncCopyBtn = document.getElementById('cloud-sync-copy-btn');
-  const cloudSyncStatusText = document.getElementById('cloud-sync-status-text');
-  const cloudSyncNowBtn = document.getElementById('cloud-sync-now-btn');
-  const cloudSyncResetBtn = document.getElementById('cloud-sync-reset-btn');
+  // --- Site Rules ---
+  const siteRulesModeAll = document.getElementById('site-rules-mode-all');
+  const siteRulesModeAllowlist = document.getElementById('site-rules-mode-allowlist');
+  const siteRulesModeHelp = document.getElementById('site-rules-mode-help');
+  const siteRulesEmptyWarning = document.getElementById('site-rules-empty-warning');
+  const siteRulesCount = document.getElementById('site-rules-count');
+  const siteRulesAddInput = document.getElementById('site-rules-add-input');
+  const siteRulesIncludeSubdomains = document.getElementById('site-rules-include-subdomains');
+  const siteRulesAddBtn = document.getElementById('site-rules-add-btn');
+  const siteRulesError = document.getElementById('site-rules-error');
+  const siteRulesFeedback = document.getElementById('site-rules-feedback');
+  const siteRulesSearchInput = document.getElementById('site-rules-search-input');
+  const siteRulesList = document.getElementById('site-rules-list');
+  const siteRulesEmpty = document.getElementById('site-rules-empty');
 
-  let currentSyncCode = null;
-  let isSyncCodeVisible = false;
+  let currentSitePolicy = null;
+  let siteRulesFeedbackTimer = null;
 
-  function maskSyncCode(code) {
-    const groups = code.split('-');
-    if (groups.length <= 2) return code;
-    return groups
-      .map((group, index) => (index === 0 || index === groups.length - 1 ? group : '•'.repeat(group.length)))
-      .join('-');
+  function showSiteRulesFeedback(message) {
+    clearTimeout(siteRulesFeedbackTimer);
+    siteRulesFeedback.textContent = message;
+    siteRulesFeedback.style.display = '';
+    siteRulesFeedbackTimer = setTimeout(() => {
+      siteRulesFeedback.textContent = '';
+      siteRulesFeedback.style.display = 'none';
+      siteRulesFeedbackTimer = null;
+    }, 2000);
+    if (typeof siteRulesFeedbackTimer?.unref === 'function') {
+      siteRulesFeedbackTimer.unref();
+    }
   }
 
-  function renderSyncCodeDisplay() {
-    if (!currentSyncCode) return;
-    cloudSyncCodeDisplay.textContent = isSyncCodeVisible ? currentSyncCode : maskSyncCode(currentSyncCode);
-    cloudSyncToggleVisibilityBtn.textContent = browserAPI.i18n.getMessage(
-      isSyncCodeVisible ? 'cloudSyncHideCode' : 'cloudSyncShowCode'
-    ) || (isSyncCodeVisible ? 'Hide' : 'Show');
+  function showSiteRulesError(message) {
+    siteRulesError.textContent = message;
+    siteRulesError.style.display = '';
   }
 
-  function formatCloudSyncError(status) {
-    return `${browserAPI.i18n.getMessage('cloudSyncErrorPrefix') || 'Sync error: '}${status.lastError}`;
+  function clearSiteRulesError() {
+    siteRulesError.textContent = '';
+    siteRulesError.style.display = 'none';
   }
 
-  function formatTrimmedNotice(trimmedCount) {
-    if (!trimmedCount) return '';
-    const message = browserAPI.i18n.getMessage('cloudSyncPagesExcludedNotice', [String(trimmedCount)]) ||
-      `(${trimmedCount} older page(s) excluded due to the size limit)`;
-    return ` ${message}`;
+  function renderSiteRuleRows() {
+    if (!currentSitePolicy) return;
+    const query = (siteRulesSearchInput.value || '').trim().toLowerCase();
+    const allSites = currentSitePolicy.sites || [];
+    const filtered = query
+      ? allSites.filter(site => site.hostname.toLowerCase().includes(query))
+      : allSites;
+
+    siteRulesList.innerHTML = '';
+
+    if (allSites.length === 0) {
+      siteRulesEmpty.textContent = browserAPI.i18n.getMessage('siteRulesNoSites') || 'No sites in the list yet.';
+      siteRulesEmpty.style.display = '';
+      return;
+    }
+
+    if (filtered.length === 0) {
+      siteRulesEmpty.textContent = browserAPI.i18n.getMessage('siteRulesNoMatches') || 'No sites match your search.';
+      siteRulesEmpty.style.display = '';
+      return;
+    }
+
+    siteRulesEmpty.style.display = 'none';
+
+    for (const rule of filtered) {
+      const row = document.createElement('div');
+      row.className = 'site-rule-row';
+
+      const info = document.createElement('div');
+      info.className = 'site-rule-info';
+
+      const host = document.createElement('span');
+      host.className = 'site-rule-hostname';
+      host.textContent = rule.hostname;
+
+      const badge = document.createElement('span');
+      badge.className = `site-rule-badge ${rule.includeSubdomains ? 'badge-subdomains' : 'badge-exact'}`;
+      badge.textContent = rule.includeSubdomains
+        ? (browserAPI.i18n.getMessage('siteSubdomainsBadge') || 'Includes subdomains')
+        : (browserAPI.i18n.getMessage('siteExactBadge') || 'Exact hostname');
+
+      info.appendChild(host);
+      info.appendChild(badge);
+
+      const actions = document.createElement('div');
+      actions.className = 'site-rule-actions';
+
+      const subLabel = document.createElement('label');
+      subLabel.className = 'site-rules-checkbox-label';
+      const subCheckbox = document.createElement('input');
+      subCheckbox.type = 'checkbox';
+      subCheckbox.className = 'site-rule-subdomain-toggle';
+      subCheckbox.checked = !!rule.includeSubdomains;
+      const subText = document.createElement('span');
+      subText.textContent = browserAPI.i18n.getMessage('siteRulesIncludeSubdomains') || 'Include subdomains';
+      subLabel.appendChild(subCheckbox);
+      subLabel.appendChild(subText);
+
+      subCheckbox.addEventListener('change', async () => {
+        const response = await sendToBackground({
+          action: 'setSiteRuleSubdomains',
+          hostname: rule.hostname,
+          includeSubdomains: subCheckbox.checked
+        });
+        if (response && response.success && response.policy) {
+          clearSiteRulesError();
+          renderSiteRules(response.policy);
+          showSiteRulesFeedback(browserAPI.i18n.getMessage('siteRulesSaved') || 'Site rules saved.');
+        } else {
+          subCheckbox.checked = !subCheckbox.checked;
+          showSiteRulesError(browserAPI.i18n.getMessage('siteRulesError') || 'Could not save the site rules.');
+        }
+      });
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'btn-icon btn-danger site-rule-remove-btn';
+      removeBtn.textContent = browserAPI.i18n.getMessage('siteRulesRemove') || 'Remove';
+      removeBtn.addEventListener('click', async () => {
+        const response = await sendToBackground({
+          action: 'removeSiteRule',
+          hostname: rule.hostname
+        });
+        if (response && response.success && response.policy) {
+          clearSiteRulesError();
+          renderSiteRules(response.policy);
+          showSiteRulesFeedback(browserAPI.i18n.getMessage('siteRulesSaved') || 'Site rules saved.');
+        } else {
+          showSiteRulesError(browserAPI.i18n.getMessage('siteRulesError') || 'Could not save the site rules.');
+        }
+      });
+
+      actions.appendChild(subLabel);
+      actions.appendChild(removeBtn);
+
+      row.appendChild(info);
+      row.appendChild(actions);
+      siteRulesList.appendChild(row);
+    }
   }
 
-  function renderCloudSyncStatus(status) {
-    cloudSyncToggle.checked = !!status.enabled;
+  function renderSiteRules(policy) {
+    currentSitePolicy = policy;
 
-    if (status.lastError) {
-      cloudSyncStatusText.textContent = formatCloudSyncError(status);
-      cloudSyncStatusText.classList.add('cloud-sync-error-text');
-    } else if (status.lastSyncedAt) {
-      cloudSyncStatusText.textContent =
-        `${browserAPI.i18n.getMessage('cloudSyncLastSyncedPrefix') || 'Last synced: '}${new Date(status.lastSyncedAt).toLocaleString()}${formatTrimmedNotice(status.lastTrimmedCount)}`;
-      cloudSyncStatusText.classList.remove('cloud-sync-error-text');
+    siteRulesModeAll.checked = (policy.mode !== 'allowlist');
+    siteRulesModeAllowlist.checked = (policy.mode === 'allowlist');
+
+    if (policy.mode === 'allowlist') {
+      siteRulesModeHelp.textContent = browserAPI.i18n.getMessage('siteRulesModeAllowlistHelp') ||
+        'Highlighting runs only on the sites listed below. Pages you are not allowed to highlight keep the highlights you already saved there.';
     } else {
-      cloudSyncStatusText.textContent = browserAPI.i18n.getMessage('cloudSyncNeverSynced') || 'Not synced yet';
-      cloudSyncStatusText.classList.remove('cloud-sync-error-text');
+      siteRulesModeHelp.textContent = browserAPI.i18n.getMessage('siteRulesModeAllHelp') ||
+        'Highlighting runs on every ordinary http and https page.';
     }
+
+    // An empty allowlist switches highlighting off across all tabs without notice,
+    // so the warning is highlighted prominently until the user adds a site.
+    const isEmptyAllowlist = (policy.mode === 'allowlist' && (!policy.sites || policy.sites.length === 0));
+    siteRulesEmptyWarning.style.display = isEmptyAllowlist ? '' : 'none';
+
+    const count = policy.sites ? policy.sites.length : 0;
+    siteRulesCount.textContent = browserAPI.i18n.getMessage('siteRulesCount', [String(count)]) ||
+      `${count} site(s) in the list`;
+
+    renderSiteRuleRows();
   }
 
-  function renderCloudSyncView(status) {
-    if (currentSyncCode !== status.code) {
-      isSyncCodeVisible = false;
-    }
-    currentSyncCode = status.code;
-
-    if (status.code) {
-      cloudSyncSetup.style.display = 'none';
-      cloudSyncConnected.style.display = '';
-      renderSyncCodeDisplay();
-      renderCloudSyncStatus(status);
+  async function handleModeChange(mode) {
+    const response = await sendToBackground({
+      action: 'setSitePolicyMode',
+      mode
+    });
+    if (response && response.success && response.policy) {
+      clearSiteRulesError();
+      renderSiteRules(response.policy);
+      showSiteRulesFeedback(browserAPI.i18n.getMessage('siteRulesSaved') || 'Site rules saved.');
     } else {
-      cloudSyncSetup.style.display = '';
-      cloudSyncConnected.style.display = 'none';
-    }
-  }
-
-  async function loadCloudSyncStatus() {
-    const response = await browserAPI.runtime.sendMessage({ action: 'getCloudSyncStatus' });
-    if (response && response.success) {
-      renderCloudSyncView(response);
-    }
-  }
-
-  cloudSyncGenerateBtn.addEventListener('click', async () => {
-    cloudSyncGenerateBtn.disabled = true;
-    try {
-      const response = await browserAPI.runtime.sendMessage({ action: 'enableCloudSync' });
-      if (response && response.success) {
-        await loadCloudSyncStatus();
+      if (currentSitePolicy) {
+        siteRulesModeAll.checked = (currentSitePolicy.mode !== 'allowlist');
+        siteRulesModeAllowlist.checked = (currentSitePolicy.mode === 'allowlist');
       }
-    } finally {
-      cloudSyncGenerateBtn.disabled = false;
+      showSiteRulesError(browserAPI.i18n.getMessage('siteRulesError') || 'Could not save the site rules.');
+    }
+  }
+
+  siteRulesModeAll.addEventListener('change', () => {
+    if (siteRulesModeAll.checked) {
+      handleModeChange('all');
     }
   });
 
-  cloudSyncPairBtn.addEventListener('click', async () => {
-    const code = cloudSyncPairInput.value.trim();
-    if (!code) return;
+  siteRulesModeAllowlist.addEventListener('change', () => {
+    if (siteRulesModeAllowlist.checked) {
+      handleModeChange('allowlist');
+    }
+  });
 
-    cloudSyncPairBtn.disabled = true;
-    try {
-      const response = await browserAPI.runtime.sendMessage({ action: 'pairCloudSync', code });
-      if (response && response.success) {
-        cloudSyncPairInput.value = '';
-        await loadCloudSyncStatus();
+  async function handleAddSiteRule() {
+    const rawInput = siteRulesAddInput.value;
+    if (!rawInput.trim()) return;
+    const includeSubdomains = siteRulesIncludeSubdomains.checked;
+    // The background normalises URLs and hostnames centrally, so we pass
+    // raw input directly without duplicating normalisation logic here.
+    const response = await sendToBackground({
+      action: 'addSiteRule',
+      hostname: rawInput,
+      includeSubdomains
+    });
+    if (response && response.success && response.policy) {
+      siteRulesAddInput.value = '';
+      siteRulesIncludeSubdomains.checked = false;
+      clearSiteRulesError();
+      renderSiteRules(response.policy);
+      showSiteRulesFeedback(browserAPI.i18n.getMessage('siteRulesSaved') || 'Site rules saved.');
+    } else {
+      if (response && response.code === 'site_invalid_hostname') {
+        showSiteRulesError(browserAPI.i18n.getMessage('siteRulesInvalidHostname') || 'Enter a website address such as example.org.');
       } else {
-        await showAlertModal(browserAPI.i18n.getMessage('cloudSyncInvalidCode') || "That sync code doesn't look right.");
+        showSiteRulesError(browserAPI.i18n.getMessage('siteRulesError') || 'Could not save the site rules.');
       }
-    } finally {
-      cloudSyncPairBtn.disabled = false;
+    }
+  }
+
+  siteRulesAddBtn.addEventListener('click', handleAddSiteRule);
+  siteRulesAddInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddSiteRule();
     }
   });
 
-  cloudSyncToggle.addEventListener('change', async () => {
-    if (cloudSyncToggle.checked) {
-      if (currentSyncCode) {
-        await browserAPI.runtime.sendMessage({ action: 'pairCloudSync', code: currentSyncCode });
+  siteRulesSearchInput.addEventListener('input', () => {
+    renderSiteRuleRows();
+  });
+
+  async function loadSitePolicy() {
+    const response = await sendToBackground({ action: 'getSitePolicy' });
+    if (response && response.success && response.policy) {
+      renderSiteRules(response.policy);
+    }
+  }
+
+  // --- Backup & Restore ---
+  const BACKUP_ERROR_LOCALE_MAP = {
+    backup_not_configured: 'backupErrorNotConfigured',
+    backup_no_recovery_code: 'backupErrorNoRecoveryCode',
+    backup_auth_failed: 'backupErrorAuthFailed',
+    backup_forbidden: 'backupErrorForbidden',
+    backup_not_found: 'backupErrorNotFound',
+    backup_conflict: 'backupErrorConflict',
+    backup_directory_missing: 'backupErrorDirectoryMissing',
+    backup_too_large: 'backupErrorTooLarge',
+    backup_rate_limited: 'backupErrorRateLimited',
+    backup_server_error: 'backupErrorServerError',
+    backup_network: 'backupErrorNetwork',
+    backup_timeout: 'backupErrorTimeout',
+    backup_tls: 'backupErrorTls',
+    backup_insecure_transport: 'backupErrorInsecureTransport',
+    backup_cross_host_redirect: 'backupErrorCrossHostRedirect',
+    backup_truncated: 'backupErrorTruncated',
+    backup_decrypt_failed: 'backupErrorDecryptFailed',
+    backup_invalid_format: 'backupErrorInvalidFormat',
+    backup_unsupported_version: 'backupErrorUnsupportedVersion',
+    backup_insecure_http_blocked: 'backupErrorInsecureHttpBlocked',
+    backup_download_failed: 'backupErrorDownloadFailed',
+    backup_safety_snapshot_failed: 'backupErrorSafetySnapshotFailed',
+    backup_storage_error: 'backupErrorStorageError',
+    backup_confirm_required: 'backupErrorConfirmRequired',
+    backup_generic: 'backupErrorGeneric',
+  };
+
+  function getBackupErrorMessage(code, fallbackMessage = '') {
+    if (!code) return fallbackMessage;
+    const localeKey = BACKUP_ERROR_LOCALE_MAP[code];
+    if (localeKey) {
+      const msg = browserAPI.i18n.getMessage(localeKey);
+      if (msg) return msg;
+    }
+    return fallbackMessage || code;
+  }
+
+  async function askConfirm(message) {
+    if (typeof window.confirm === 'function') {
+      try {
+        const result = window.confirm(message);
+        if (typeof result === 'boolean') {
+          return result;
+        }
+      } catch {
+        // jsdom throws "Not implemented: window.confirm"
+      }
+    }
+    return showConfirmModal(message);
+  }
+
+  const backupDestNone = document.getElementById('backup-dest-none');
+  const backupDestGist = document.getElementById('backup-dest-gist');
+  const backupDestWebdav = document.getElementById('backup-dest-webdav');
+
+  const backupNewCodeBanner = document.getElementById('backup-new-code-banner');
+  const backupGeneratedCodeValue = document.getElementById('backup-generated-code-value');
+  const backupCopyGeneratedCodeBtn = document.getElementById('backup-copy-generated-code-btn');
+
+  const backupGistConfig = document.getElementById('backup-gist-config');
+  const backupGistToken = document.getElementById('backup-gist-token');
+  const backupGistId = document.getElementById('backup-gist-id');
+  const backupGistFilename = document.getElementById('backup-gist-filename');
+  const backupGistSaveBtn = document.getElementById('backup-gist-save-btn');
+  const backupGistTestBtn = document.getElementById('backup-gist-test-btn');
+  const backupGistError = document.getElementById('backup-gist-error');
+  const backupGistFeedback = document.getElementById('backup-gist-feedback');
+
+  const backupWebdavConfig = document.getElementById('backup-webdav-config');
+  const backupWebdavUrl = document.getElementById('backup-webdav-url');
+  const backupWebdavUsername = document.getElementById('backup-webdav-username');
+  const backupWebdavPassword = document.getElementById('backup-webdav-password');
+  const backupWebdavInsecureHttp = document.getElementById('backup-webdav-insecure-http');
+  const backupWebdavSaveBtn = document.getElementById('backup-webdav-save-btn');
+  const backupWebdavTestBtn = document.getElementById('backup-webdav-test-btn');
+  const backupWebdavError = document.getElementById('backup-webdav-error');
+  const backupWebdavFeedback = document.getElementById('backup-webdav-feedback');
+
+  const backupRecoveryCodeDisplay = document.getElementById('backup-recovery-code-display');
+  const backupCopyRecoveryCodeBtn = document.getElementById('backup-copy-recovery-code-btn');
+  const backupRegenerateCodeBtn = document.getElementById('backup-regenerate-code-btn');
+  const backupCustomRecoveryCodeInput = document.getElementById('backup-custom-recovery-code-input');
+  const backupSaveRecoveryCodeBtn = document.getElementById('backup-save-recovery-code-btn');
+  const backupRecoveryError = document.getElementById('backup-recovery-error');
+  const backupRecoveryFeedback = document.getElementById('backup-recovery-feedback');
+
+  const backupAutoToggle = document.getElementById('backup-auto-toggle');
+
+  const backupNowBtn = document.getElementById('backup-now-btn');
+  const backupRestoreBtn = document.getElementById('backup-restore-btn');
+  const backupExportLocalBtn = document.getElementById('backup-export-local-btn');
+  const backupActionError = document.getElementById('backup-action-error');
+  const backupActionFeedback = document.getElementById('backup-action-feedback');
+
+  const backupStatusLastSuccess = document.getElementById('backup-status-last-success');
+  const backupStatusUpToDate = document.getElementById('backup-status-up-to-date');
+  const backupStatusLastError = document.getElementById('backup-status-last-error');
+
+  const backupFeedbackTimers = new Map();
+  function showTemporaryFeedback(element, text, durationMs = 3000) {
+    if (!element) return;
+    if (backupFeedbackTimers.has(element)) {
+      clearTimeout(backupFeedbackTimers.get(element));
+    }
+    element.textContent = text;
+    element.style.display = '';
+    const timer = setTimeout(() => {
+      element.textContent = '';
+      element.style.display = 'none';
+      backupFeedbackTimers.delete(element);
+    }, durationMs);
+    if (typeof timer?.unref === 'function') timer.unref();
+    backupFeedbackTimers.set(element, timer);
+  }
+
+  function showError(element, text) {
+    if (!element) return;
+    element.textContent = text;
+    element.style.display = text ? '' : 'none';
+  }
+
+  function clearError(element) {
+    if (!element) return;
+    element.textContent = '';
+    element.style.display = 'none';
+  }
+
+  let currentBackupState = null;
+
+  function renderBackupState(state) {
+    if (!state) return;
+    currentBackupState = state;
+
+    const dest = state.destination || 'none';
+    backupDestNone.checked = (dest === 'none');
+    backupDestGist.checked = (dest === 'gist');
+    backupDestWebdav.checked = (dest === 'webdav');
+
+    backupGistConfig.style.display = (dest === 'gist') ? '' : 'none';
+    backupWebdavConfig.style.display = (dest === 'webdav') ? '' : 'none';
+
+    if (state.gist) {
+      if (state.gist.hasToken) {
+        backupGistToken.placeholder = browserAPI.i18n.getMessage('backupTokenSavedPlaceholder') || '•••••••• (saved)';
+      } else {
+        backupGistToken.placeholder = browserAPI.i18n.getMessage('backupGistTokenPlaceholder') || 'ghp_...';
+      }
+      backupGistId.value = state.gist.gistId || '';
+      backupGistFilename.value = state.gist.filename || '';
+    }
+
+    if (state.webdav) {
+      backupWebdavUrl.value = state.webdav.url || '';
+      backupWebdavUsername.value = state.webdav.username || '';
+      if (state.webdav.hasPassword) {
+        backupWebdavPassword.placeholder = browserAPI.i18n.getMessage('backupPasswordSavedPlaceholder') || '•••••••• (saved)';
+      } else {
+        backupWebdavPassword.placeholder = browserAPI.i18n.getMessage('backupWebdavPasswordPlaceholder') || 'Password';
+      }
+      backupWebdavInsecureHttp.checked = state.webdav.allowInsecureHttp === true;
+    }
+
+    backupRecoveryCodeDisplay.textContent = state.recoveryCode || '';
+    backupAutoToggle.checked = state.autoEnabled === true;
+
+    if (state.lastSuccessAt) {
+      const formattedDate = new Date(state.lastSuccessAt).toLocaleString();
+      backupStatusLastSuccess.textContent = browserAPI.i18n.getMessage('backupLastSuccessLabel', [formattedDate]) ||
+        `Last backup: ${formattedDate}`;
+    } else {
+      const neverText = browserAPI.i18n.getMessage('backupNeverRun') || 'Never';
+      backupStatusLastSuccess.textContent = browserAPI.i18n.getMessage('backupLastSuccessLabel', [neverText]) ||
+        `Last backup: ${neverText}`;
+    }
+
+    if (state.upToDate) {
+      backupStatusUpToDate.textContent = browserAPI.i18n.getMessage('backupStatusUpToDate') || 'Up to date';
+      backupStatusUpToDate.className = 'site-rule-badge badge-subdomains';
+    } else {
+      backupStatusUpToDate.textContent = browserAPI.i18n.getMessage('backupStatusPending') || 'Changes pending';
+      backupStatusUpToDate.className = 'site-rule-badge';
+    }
+
+    if (state.lastError) {
+      const errorMsg = getBackupErrorMessage(state.lastError.code, state.lastError.message);
+      backupStatusLastError.textContent = errorMsg;
+      backupStatusLastError.style.display = '';
+    } else {
+      backupStatusLastError.textContent = '';
+      backupStatusLastError.style.display = 'none';
+    }
+  }
+
+  async function handleDestinationChange(dest) {
+    clearError(backupActionError);
+    const response = await sendToBackground({
+      action: 'setBackupDestination',
+      destination: dest
+    });
+
+    if (response && response.success) {
+      if (response.generatedRecoveryCode) {
+        backupGeneratedCodeValue.textContent = response.generatedRecoveryCode;
+        backupNewCodeBanner.style.display = '';
+      }
+      if (response.state) {
+        renderBackupState(response.state);
       }
     } else {
-      await browserAPI.runtime.sendMessage({ action: 'disableCloudSync' });
+      if (currentBackupState) {
+        const prev = currentBackupState.destination || 'none';
+        backupDestNone.checked = (prev === 'none');
+        backupDestGist.checked = (prev === 'gist');
+        backupDestWebdav.checked = (prev === 'webdav');
+      }
+      showError(backupActionError, getBackupErrorMessage(response?.code, response?.error));
     }
-    await loadCloudSyncStatus();
+  }
+
+  backupDestNone.addEventListener('change', () => {
+    if (backupDestNone.checked) handleDestinationChange('none');
+  });
+  backupDestGist.addEventListener('change', () => {
+    if (backupDestGist.checked) handleDestinationChange('gist');
+  });
+  backupDestWebdav.addEventListener('change', () => {
+    if (backupDestWebdav.checked) handleDestinationChange('webdav');
   });
 
-  cloudSyncToggleVisibilityBtn.addEventListener('click', () => {
-    isSyncCodeVisible = !isSyncCodeVisible;
-    renderSyncCodeDisplay();
-  });
-
-  cloudSyncCopyBtn.addEventListener('click', async () => {
-    if (!currentSyncCode) return;
-    const copied = await copyTextToClipboard(currentSyncCode);
-    if (copied) {
-      const original = cloudSyncCopyBtn.textContent;
-      cloudSyncCopyBtn.textContent = browserAPI.i18n.getMessage('cloudSyncCodeCopied') || 'Copied!';
-      setTimeout(() => { cloudSyncCopyBtn.textContent = original; }, 1500);
-    } else {
-      isSyncCodeVisible = true;
-      renderSyncCodeDisplay();
-      await showAlertModal(
-        browserAPI.i18n.getMessage('cloudSyncCopyFailed') ||
-          "Couldn't copy automatically. The code is now shown above - please copy it manually."
-      );
-    }
-  });
-
-  cloudSyncNowBtn.addEventListener('click', async () => {
-    cloudSyncNowBtn.disabled = true;
-    const originalText = cloudSyncNowBtn.textContent;
-    cloudSyncNowBtn.textContent = browserAPI.i18n.getMessage('cloudSyncSyncing') || 'Syncing...';
+  backupCopyGeneratedCodeBtn.addEventListener('click', async () => {
+    const code = backupGeneratedCodeValue.textContent;
+    if (!code) return;
     try {
-      await browserAPI.runtime.sendMessage({ action: 'triggerCloudSync' });
-      await loadCloudSyncStatus();
-    } finally {
-      cloudSyncNowBtn.disabled = false;
-      cloudSyncNowBtn.textContent = originalText;
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(code);
+      }
+    } catch {}
+    showTemporaryFeedback(backupCopyGeneratedCodeBtn, browserAPI.i18n.getMessage('backupRecoveryCodeCopied') || 'Copied!');
+  });
+
+  backupCopyRecoveryCodeBtn.addEventListener('click', async () => {
+    const code = backupRecoveryCodeDisplay.textContent;
+    if (!code) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(code);
+      }
+    } catch {}
+    showTemporaryFeedback(backupRecoveryFeedback, browserAPI.i18n.getMessage('backupRecoveryCodeCopied') || 'Recovery code copied to clipboard.');
+  });
+
+  backupGistSaveBtn.addEventListener('click', async () => {
+    clearError(backupGistError);
+    const payload = {
+      action: 'saveGistConfig',
+      gistId: backupGistId.value.trim(),
+      filename: backupGistFilename.value.trim()
+    };
+    const typedToken = backupGistToken.value.trim();
+    if (typedToken) {
+      payload.token = typedToken;
+    }
+    const response = await sendToBackground(payload);
+    if (response && response.success) {
+      backupGistToken.value = '';
+      if (response.state) renderBackupState(response.state);
+      showTemporaryFeedback(backupGistFeedback, browserAPI.i18n.getMessage('backupConfigSaved') || 'Backup settings saved.');
+    } else {
+      showError(backupGistError, getBackupErrorMessage(response?.code, response?.error));
     }
   });
 
-  cloudSyncResetBtn.addEventListener('click', async () => {
-    const confirmed = await showConfirmModal(
-      browserAPI.i18n.getMessage('cloudSyncResetConfirm') ||
-      'This disconnects this device and permanently forgets the sync code. Continue?'
-    );
+  backupGistTestBtn.addEventListener('click', async () => {
+    clearError(backupGistError);
+    const response = await sendToBackground({ action: 'testBackupConnection' });
+    if (response && response.success) {
+      if (response.state) renderBackupState(response.state);
+      showTemporaryFeedback(backupGistFeedback, browserAPI.i18n.getMessage('backupTestSuccess') || 'Connection test succeeded.');
+    } else {
+      showError(backupGistError, getBackupErrorMessage(response?.code, response?.error));
+    }
+  });
+
+  backupWebdavSaveBtn.addEventListener('click', async () => {
+    clearError(backupWebdavError);
+    const payload = {
+      action: 'saveWebdavConfig',
+      url: backupWebdavUrl.value.trim(),
+      username: backupWebdavUsername.value.trim(),
+      allowInsecureHttp: backupWebdavInsecureHttp.checked
+    };
+    if (backupWebdavPassword.value) {
+      payload.password = backupWebdavPassword.value;
+    }
+    const response = await sendToBackground(payload);
+    if (response && response.success) {
+      backupWebdavPassword.value = '';
+      if (response.state) renderBackupState(response.state);
+      showTemporaryFeedback(backupWebdavFeedback, browserAPI.i18n.getMessage('backupConfigSaved') || 'Backup settings saved.');
+    } else {
+      showError(backupWebdavError, getBackupErrorMessage(response?.code, response?.error));
+    }
+  });
+
+  backupWebdavTestBtn.addEventListener('click', async () => {
+    clearError(backupWebdavError);
+    const response = await sendToBackground({ action: 'testBackupConnection' });
+    if (response && response.success) {
+      if (response.state) renderBackupState(response.state);
+      showTemporaryFeedback(backupWebdavFeedback, browserAPI.i18n.getMessage('backupTestSuccess') || 'Connection test succeeded.');
+    } else {
+      showError(backupWebdavError, getBackupErrorMessage(response?.code, response?.error));
+    }
+  });
+
+  backupRegenerateCodeBtn.addEventListener('click', async () => {
+    clearError(backupRecoveryError);
+    const confirmMessage = browserAPI.i18n.getMessage('backupConfirmRegenerateCode') ||
+      'Generating a new recovery code means older backups encrypted with the previous code can no longer be opened. Are you sure you want to proceed?';
+    const confirmed = await askConfirm(confirmMessage);
     if (!confirmed) return;
 
-    await browserAPI.runtime.sendMessage({ action: 'resetCloudSyncCode' });
-    await loadCloudSyncStatus();
+    const response = await sendToBackground({ action: 'generateBackupRecoveryCode' });
+    if (response && response.success) {
+      if (response.state) renderBackupState(response.state);
+      showTemporaryFeedback(backupRecoveryFeedback, browserAPI.i18n.getMessage('backupCodeRegenerated') || 'New recovery code generated.');
+    } else {
+      showError(backupRecoveryError, getBackupErrorMessage(response?.code, response?.error));
+    }
   });
+
+  backupSaveRecoveryCodeBtn.addEventListener('click', async () => {
+    clearError(backupRecoveryError);
+    const code = backupCustomRecoveryCodeInput.value.trim();
+    if (!code) return;
+    const response = await sendToBackground({
+      action: 'saveBackupRecoveryCode',
+      code
+    });
+    if (response && response.success) {
+      backupCustomRecoveryCodeInput.value = '';
+      if (response.state) renderBackupState(response.state);
+      showTemporaryFeedback(backupRecoveryFeedback, browserAPI.i18n.getMessage('backupCustomCodeSaved') || 'Recovery code saved.');
+    } else {
+      showError(backupRecoveryError, getBackupErrorMessage(response?.code, response?.error));
+    }
+  });
+
+  backupAutoToggle.addEventListener('change', async () => {
+    const response = await sendToBackground({
+      action: 'setBackupAutoEnabled',
+      enabled: backupAutoToggle.checked
+    });
+    if (response && response.success && response.state) {
+      renderBackupState(response.state);
+    }
+  });
+
+  backupNowBtn.addEventListener('click', async () => {
+    clearError(backupActionError);
+    const response = await sendToBackground({ action: 'runBackupNow' });
+    if (response && response.success) {
+      if (response.state) renderBackupState(response.state);
+      if (response.result && response.result.uploaded === false) {
+        showTemporaryFeedback(backupActionFeedback, browserAPI.i18n.getMessage('backupNothingChanged') || 'Nothing has changed');
+      } else {
+        showTemporaryFeedback(backupActionFeedback, browserAPI.i18n.getMessage('backupSuccess') || 'Backup completed successfully.');
+      }
+    } else {
+      const errCode = response?.code || response?.result?.code;
+      const errMsg = response?.error || response?.result?.message;
+      showError(backupActionError, getBackupErrorMessage(errCode, errMsg));
+    }
+  });
+
+  backupRestoreBtn.addEventListener('click', async () => {
+    clearError(backupActionError);
+    const previewRes = await sendToBackground({ action: 'previewRemoteBackup' });
+    if (!previewRes || !previewRes.success) {
+      showError(backupActionError, getBackupErrorMessage(previewRes?.code, previewRes?.error));
+      return;
+    }
+
+    const preview = previewRes.preview || {};
+    const confirmMessage = browserAPI.i18n.getMessage('backupRestoreConfirm', [
+      String(preview.pageCount ?? 0),
+      String(preview.highlightCount ?? 0),
+      String(preview.siteCount ?? 0)
+    ]) || `Remote backup contains ${preview.pageCount ?? 0} pages, ${preview.highlightCount ?? 0} highlights, and ${preview.siteCount ?? 0} site rules. Restore this backup and replace your local data?`;
+
+    const confirmed = await askConfirm(confirmMessage);
+    if (!confirmed) return;
+
+    let restoreRes = await sendToBackground({
+      action: 'restoreFromRemoteBackup',
+      confirm: true
+    });
+
+    if (!restoreRes || !restoreRes.success) {
+      if (restoreRes && restoreRes.code === 'backup_safety_snapshot_failed') {
+        const secondConfirmMessage = browserAPI.i18n.getMessage('backupSafetySnapshotFailedConfirm') ||
+          'Could not create a safety snapshot before restoring. Continue restoring anyway?';
+        const secondConfirmed = await askConfirm(secondConfirmMessage);
+        if (!secondConfirmed) return;
+
+        restoreRes = await sendToBackground({
+          action: 'restoreFromRemoteBackup',
+          confirm: true,
+          acceptMissingSnapshot: true
+        });
+      }
+    }
+
+    if (restoreRes && restoreRes.success) {
+      if (restoreRes.state) renderBackupState(restoreRes.state);
+      await Promise.all([
+        loadSitePolicy(),
+        loadCustomColors()
+      ]);
+      const filename = restoreRes.safetySnapshot?.filename;
+      if (filename) {
+        showTemporaryFeedback(
+          backupActionFeedback,
+          browserAPI.i18n.getMessage('backupRestoreSuccessWithSnapshot', [filename]) || `Backup restored successfully. Safety snapshot saved to ${filename}.`
+        );
+      } else {
+        showTemporaryFeedback(
+          backupActionFeedback,
+          browserAPI.i18n.getMessage('backupRestoreSuccess') || 'Backup restored successfully.'
+        );
+      }
+    } else {
+      showError(backupActionError, getBackupErrorMessage(restoreRes?.code, restoreRes?.error));
+    }
+  });
+
+  backupExportLocalBtn.addEventListener('click', async () => {
+    clearError(backupActionError);
+    const response = await sendToBackground({ action: 'exportLocalBackup' });
+    if (response && response.success) {
+      if (response.state) renderBackupState(response.state);
+      const filename = response.filename || '';
+      showTemporaryFeedback(
+        backupActionFeedback,
+        browserAPI.i18n.getMessage('backupExportSuccess', [filename]) || `Local backup exported to ${filename}.`
+      );
+    } else {
+      showError(backupActionError, getBackupErrorMessage(response?.code, response?.error));
+    }
+  });
+
+  async function loadBackupState() {
+    const response = await sendToBackground({ action: 'getBackupState' });
+    if (response && response.success && response.state) {
+      renderBackupState(response.state);
+    }
+  }
 
   // --- Init ---
   if (!browserAPI.commands) {
@@ -634,14 +1165,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadGeneralSettings(),
     loadCustomColors(),
     loadShortcuts(),
-    loadCloudSyncStatus()
+    loadSitePolicy(),
+    loadBackupState()
   ]);
 
   window.addEventListener('focus', async () => {
     await Promise.all([
       loadCustomColors(),
       loadShortcuts(),
-      loadCloudSyncStatus()
+      loadSitePolicy(),
+      loadBackupState()
     ]);
   });
 });
