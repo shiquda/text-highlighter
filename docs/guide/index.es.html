@@ -47,11 +47,6 @@
                     </ul>
                 </li>
                 <li><a href="#pages-list">Lista de páginas resaltadas</a></li>
-                <li><a href="#sync">Sincronización</a>
-                    <ul class="toc-sublist">
-                        <li><a href="#cloud-sync">Sincronización en la nube (Beta)</a></li>
-                    </ul>
-                </li>
                 <li><a href="#import-export">Importar y exportar</a></li>
             </ul>
         </aside>
@@ -195,9 +190,6 @@
                 <h3>Colores personalizados</h3>
                 <p>Permite renombrar un color, cambiar su tono y eliminar colores de uno en uno o todos a la vez. Consulta <a href="#custom-colors">Colores personalizados</a> para más detalles.</p>
 
-                <h3>Sincronización en la nube (Beta)</h3>
-                <p>Aquí se genera el código de sincronización, se vinculan dispositivos y se sincroniza al momento. Consulta <a href="#cloud-sync">Sincronización en la nube (Beta)</a> para más detalles.</p>
-
                 <h3 id="settings-shortcuts">Atajos de teclado</h3>
                 <p>Elige qué color aplica cada uno de los 5 espacios de atajo. Los valores por defecto de los espacios 1 a 5 son amarillo, verde, azul, rosa y naranja, y también puedes asignar colores personalizados. Las combinaciones de teclas se cambian en los ajustes de atajos del navegador. Debajo de los espacios se muestran los dos atajos para moverse entre resaltados, con las teclas asignadas.</p>
 
@@ -217,44 +209,6 @@
                     <li><strong>Eliminar:</strong> elimina páginas concretas o usa el botón de la barra superior para borrar todos los datos.</li>
                     <li><strong>Exportar/importar:</strong> haz copia de seguridad o restaura tus datos desde el menú <strong>Más acciones (…)</strong> de la barra de herramientas.</li>
                 </ul>
-            </section>
-
-            <section id="sync">
-                <h2>Sincronización</h2>
-                <p>Sincroniza los datos de resaltado entre dispositivos mediante tu cuenta de Google (Chrome) o de Firefox con la sesión iniciada.</p>
-
-                <h3>Cómo funciona</h3>
-                <p>Al añadir o eliminar resaltados en un dispositivo, el cambio se refleja automáticamente en los demás dispositivos con la misma cuenta. Si hay conflictos, se conserva el cambio más reciente.</p>
-
-                <h3>Limitaciones</h3>
-                <ul>
-                    <li><strong>Límite de almacenamiento:</strong> el almacenamiento de sincronización tiene un <strong>límite total de 100 KB</strong>, y un único resaltado no puede superar los <strong>8 KB</strong>.</li>
-                    <li><strong>Purga de datos antiguos:</strong> cuando el almacenamiento se llena, se eliminan automáticamente los datos sincronizados de las páginas actualizadas hace más tiempo para hacer sitio. (Los datos locales se conservan.)</li>
-                    <li><strong>Sin soporte en móvil:</strong> la sincronización no es compatible con Firefox para Android.</li>
-                </ul>
-
-                <h3 id="cloud-sync">Sincronización en la nube (Beta)</h3>
-                <p>Una función aparte para entornos que no admiten la sincronización nativa del navegador, como Firefox para Android. Los dispositivos se vinculan con un <strong>código de sincronización</strong> en lugar de iniciar sesión con una cuenta, y los datos de resaltado se cifran en tu dispositivo antes de subirlos, de modo que el servidor nunca accede al contenido real.</p>
-
-                <h4>Cómo usarla</h4>
-                <ol>
-                    <li>Haz clic en el icono de la extensión en la barra de herramientas para abrir el menú emergente y pulsa el <strong>icono de ajustes (⚙)</strong>.</li>
-                    <li>En la sección <strong>"Sincronización en la Nube (Beta)"</strong> de la pantalla de ajustes, pulsa <strong>"Generar Nuevo Código"</strong> para crear un código de sincronización.</li>
-                    <li>En el otro dispositivo que quieras sincronizar, abre la pantalla de ajustes, introduce el mismo código en el campo "Introduce el código de sincronización de otro dispositivo" y pulsa <strong>"Conectar"</strong>.</li>
-                    <li>La sincronización empieza en cuanto generas o conectas un código, y el interruptor <strong>"Sincronización en la Nube"</strong> se activa solo. A partir de ahí se sincroniza automáticamente cada 15 minutos aproximadamente, o puedes pulsar <strong>"Sincronizar Ahora"</strong> para hacerlo al instante. Desactiva el interruptor para pausar la sincronización en ese dispositivo.</li>
-                </ol>
-
-                <div class="warning">
-                    <span class="warning-title">Atención</span>
-                    Si pierdes el código de sincronización, no se podrán recuperar los datos guardados en la nube. El código se muestra parcialmente oculto en pantalla; usa "Mostrar" para verlo entero o "Copiar" para copiarlo al portapapeles. Guárdalo en un lugar seguro.
-                </div>
-
-                <p><strong>Desconectar:</strong> al pulsar "Olvidar Código" en la pantalla de ajustes, este dispositivo se desvincula de la sincronización y olvida el código.</p>
-
-                <div class="note">
-                    <span class="note-title">Nota</span>
-                    No se garantiza el correcto funcionamiento si usas a la vez la sincronización nativa del navegador y la sincronización en la nube. Recomendamos usar solo una de las dos.
-                </div>
             </section>
 
             <section id="import-export">
