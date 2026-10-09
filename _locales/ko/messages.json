@@ -554,7 +554,7 @@
     "message": "Filename"
   },
   "backupGistFilenamePlaceholder": {
-    "message": "marks-backup.json"
+    "message": "marks-local-backup.json"
   },
   "backupWebdavTitle": {
     "message": "WebDAV Settings"
