@@ -7,7 +7,7 @@ import {
 
 export const PROVIDER_ID = 'gist';
 
-const DEFAULT_FILENAME = 'marks-local-backup.enc.json';
+const DEFAULT_FILENAME = 'marks-local-backup.json';
 const GITHUB_API_BASE = 'https://api.github.com';
 const TRUSTED_RAW_HOSTS = new Set([
   'gist.githubusercontent.com',
@@ -215,7 +215,7 @@ export async function writeRemote(config, content, options = {}) {
     if (!config.gistId) {
       const url = `${GITHUB_API_BASE}/gists`;
       const body = JSON.stringify({
-        description: 'Marks Local encrypted backup',
+        description: 'Marks Local backup',
         public: false,
         files: {
           [filename]: {

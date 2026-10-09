@@ -1,8 +1,9 @@
 # Marks Local: Text Highlighter
 
 Highlight text on web pages and keep it on your own machine. Highlights live in
-`storage.local`; the only thing that ever leaves the device is an encrypted
-backup file you configure yourself.
+`storage.local`; nothing leaves the device unless you configure a backup
+destination and run one, and that backup is uploaded unencrypted unless you turn
+encryption on.
 
 This is a fork of [cuspymd/text-highlighter](https://github.com/cuspymd/text-highlighter)
 (MIT). It keeps the highlighting engine and drops the parts that depended on
@@ -74,10 +75,14 @@ Two things follow from registering per site rather than always:
 Settings → Backup & Restore.
 
 1. Pick a destination: **GitHub Gist** or **WebDAV**.
-2. The first time you pick one, the extension generates a **recovery code**.
-   Write it down. It is the only key to the backup: the file on the server is
-   encrypted with a key derived from it, and nobody — this extension, GitHub,
-   your WebDAV host — can read it without it.
+2. Decide about **Encrypt backups**. It is **off by default**, and that is not a
+   display detail: with it off the file on the server is the plain JSON of your
+   pages, site rules and settings. Anyone who can reach it — a leaked gist link,
+   a shared or compromised WebDAV account, the host's own backups — can read
+   every page address and every highlighted passage. Turn it on and the payload
+   is sealed instead; the extension then generates a **recovery code**, which
+   you have to write down, because it is the only key: nobody, this extension
+   included, can open the file without it.
 3. Fill in the destination:
    - **GitHub Gist**: a personal access token with the `gist` scope. Leave the
      gist id empty to have a private gist created on the first backup.
@@ -89,22 +94,25 @@ Settings → Backup & Restore.
    retries a network failure a few times with a widening delay. A run that finds
    nothing changed uploads nothing.
 
-The payload is a snapshot of your pages, settings and site rules, sealed with
-AES-256-GCM under a key derived from the recovery code (HKDF-SHA256). The
-envelope records the format and its version; the recovery code, the tokens and
-the passwords are never part of it.
+The payload is always the same snapshot of your pages, settings and site rules.
+With encryption on it is sealed with AES-256-GCM under a key derived from the
+recovery code (HKDF-SHA256) and uploaded as an envelope that records the format
+and its version; with it off it is uploaded as that snapshot in plain JSON.
+Either way the recovery code, the tokens and the passwords are never part of it.
 
 To restore on another device: install the extension, choose the same
-destination, fill in its credentials, paste your recovery code under "use an
-existing recovery code", then **Restore from backup**. You are shown how many
-pages and highlights the backup holds before it replaces anything.
+destination, fill in its credentials, then **Restore from backup**. An encrypted
+backup also needs the recovery code, pasted under "use an existing recovery
+code"; a plaintext one needs nothing. You are shown how many pages and
+highlights the backup holds — and whether it is encrypted — before it replaces
+anything.
 
 Three things about restoring are deliberate:
 
 - It replaces the local page set, rather than merging into it.
-- It writes an encrypted copy of what is about to be overwritten to your
-  downloads folder first. If that fails it stops, and asks again if you want to
-  go ahead without it.
+- It writes a copy of what is about to be overwritten to your downloads folder
+  first, in whichever shape the current setting produces. If that fails it
+  stops, and asks again if you want to go ahead without it.
 - If the remote changed since this device last read it, the upload refuses and
   tells you, instead of overwriting someone else's newer backup.
 
@@ -224,6 +232,11 @@ Unavailable APIs are guarded at runtime with `browser.runtime.getPlatformInfo()`
   and reported rather than restored. Use WebDAV for a large collection.
 - **A local `file://` page is only highlighted in All sites mode.** Allowlist
   rules are hostnames, and a local file has none, so there is nothing to list.
+- **Backups are unencrypted unless you turn encryption on.** That is the default
+  you asked for, not an oversight: it means the file at the destination is
+  readable by whoever can reach it, and the remote keeps history, so a leaked
+  link exposes old copies too. Encryption is one toggle away in the same card,
+  and it costs only the recovery code.
 - **One backup destination at a time.**
 - **A restore replaces rather than merges.** The safety copy written to your
   downloads folder is the way back.

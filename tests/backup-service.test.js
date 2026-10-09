@@ -3,6 +3,7 @@ import chrome from '../mocks/chrome.js';
 import { SITE_POLICY_KEY, BACKUP_KEYS } from '../constants/storage-keys.js';
 import { BACKUP_ALARM_NAME } from '../constants/backup-config.js';
 import { openBackupFromText, generateRecoveryCode } from '../shared/backup-crypto.js';
+import { isBackupEnvelope } from '../shared/backup-schema.js';
 import { buildMatchPatterns, normalizeSitePolicy } from '../shared/site-rules.js';
 
 const PAGE = 'https://example.com/article';
@@ -133,6 +134,17 @@ async function configureGist(api, patch = { token: TOKEN }) {
   return api.getRecoveryCode();
 }
 
+/**
+ * The same destination with the sealed-envelope mode on, which is the only way
+ * a recovery code comes into existence.
+ */
+async function configureEncryptedGist(api, patch = { token: TOKEN }) {
+  await api.setBackupDestination('gist');
+  await api.saveGistConfig(patch);
+  await api.setBackupEncryption(true);
+  return api.getRecoveryCode();
+}
+
 function downloadedFilenames() {
   return chrome.downloads.download.mock.calls.map(([options]) => options.filename);
 }
@@ -186,23 +198,56 @@ describe('backup-service', () => {
       expect(result).toMatchObject({ ok: false, code: 'backup_not_configured' });
 
       const state = await api.getBackupState();
-      expect(state.hasRecoveryCode).toBe(true);
+      // Nothing to encrypt with yet, so there is no code either - gathering one
+      // now would be telling the user to guard something nothing uses.
+      expect(state.hasRecoveryCode).toBe(false);
       expect(state.configured).toBe(false);
     });
   });
 
   describe('first configuration', () => {
-    it('mints a recovery code once and keeps it', async () => {
+    it('backups are unencrypted until the mode is turned on', async () => {
       const api = await freshService();
 
-      const first = await api.setBackupDestination('gist');
-      expect(first.ok).toBe(true);
-      expect(typeof first.generatedRecoveryCode).toBe('string');
-      expect(local[BACKUP_KEYS.RECOVERY_CODE]).toBe(first.generatedRecoveryCode);
+      const destination = await api.setBackupDestination('gist');
+      expect(destination).toEqual({ ok: true });
+      expect(local[BACKUP_KEYS.RECOVERY_CODE]).toBeUndefined();
+      expect((await api.getBackupState()).encrypt).toBe(false);
+    });
 
-      const second = await api.setBackupDestination('gist');
-      expect(second.generatedRecoveryCode).toBeNull();
-      expect(local[BACKUP_KEYS.RECOVERY_CODE]).toBe(first.generatedRecoveryCode);
+    it('mints a recovery code when encryption is turned on, and keeps it', async () => {
+      const api = await freshService();
+      await api.setBackupDestination('gist');
+
+      const on = await api.setBackupEncryption(true);
+      expect(on).toMatchObject({ ok: true, encrypt: true });
+      expect(typeof on.generatedRecoveryCode).toBe('string');
+      expect(local[BACKUP_KEYS.RECOVERY_CODE]).toBe(on.generatedRecoveryCode);
+
+      const again = await api.setBackupEncryption(true);
+      expect(again.generatedRecoveryCode).toBeNull();
+      expect(local[BACKUP_KEYS.RECOVERY_CODE]).toBe(on.generatedRecoveryCode);
+
+      // Turning it off keeps the code: flipping it back on must not orphan the
+      // backups the old code already opened.
+      const off = await api.setBackupEncryption(false);
+      expect(off).toMatchObject({ encrypt: false, generatedRecoveryCode: null });
+      expect(local[BACKUP_KEYS.RECOVERY_CODE]).toBe(on.generatedRecoveryCode);
+    });
+
+    it('forgets the last fingerprint when the payload shape changes', async () => {
+      local[PAGE] = [HIGHLIGHT];
+      const api = await freshService();
+      await configureGist(api);
+      await api.runBackup();
+      expect((await api.getBackupState()).upToDate).toBe(true);
+
+      await api.setBackupEncryption(true);
+
+      // The local data did not move, but what would be uploaded did, so the
+      // next run has to go out rather than report "nothing has changed".
+      expect((await api.getBackupState()).upToDate).toBe(false);
+      expect(await api.runBackup()).toMatchObject({ ok: true, uploaded: true });
     });
 
     it('catches up the alarm schedule when automatic backup is switched on', async () => {
@@ -221,26 +266,53 @@ describe('backup-service', () => {
   });
 
   describe('uploading', () => {
-    it('creates the remote file and never uploads plaintext', async () => {
+    it('uploads the snapshot as plain text while encryption is off', async () => {
       local[PAGE] = [HIGHLIGHT];
-      local[`${PAGE}_meta`] = { title: 'Article title', lastUpdated: '2026-01-01T00:00:00.000Z' };
       const api = await freshService();
-      const code = await configureGist(api);
+      await configureGist(api);
 
       const result = await api.runBackup();
 
       expect(result).toMatchObject({ ok: true, uploaded: true });
-      expect(remote.gist).not.toBeNull();
+      expect(remote.gist.filename).toBe('marks-local-backup.json');
+      expect(isBackupEnvelope(JSON.parse(remote.gist.text))).toBe(false);
+      expect(JSON.parse(remote.gist.text).pages.map(page => page.url)).toEqual([PAGE]);
+
+      // The gist id the provider created has to be remembered, or the next
+      // upload would create a second gist instead of updating this one.
+      expect((await api.getBackupConfig()).gist.gistId).toBe('gist-1');
+    });
+
+    it('seals the payload and hides the data when encryption is on', async () => {
+      local[PAGE] = [HIGHLIGHT];
+      local[`${PAGE}_meta`] = { title: 'Article title', lastUpdated: '2026-01-01T00:00:00.000Z' };
+      const api = await freshService();
+      const code = await configureEncryptedGist(api);
+
+      const result = await api.runBackup();
+
+      expect(result).toMatchObject({ ok: true, uploaded: true });
+      // The same name either way: the payload, not the filename, says whether
+      // it is sealed.
+      expect(remote.gist.filename).toBe('marks-local-backup.json');
       expect(remote.gist.text).not.toContain('a secret sentence');
       expect(remote.gist.text).not.toContain(PAGE);
 
       const reopened = await openBackupFromText(remote.gist.text, code);
       expect(reopened.ok).toBe(true);
       expect(reopened.snapshot.pages.map(page => page.url)).toContain(PAGE);
+    });
 
-      // The gist id the provider created has to be remembered, or the next
-      // upload would create a second gist instead of updating this one.
-      expect((await api.getBackupConfig()).gist.gistId).toBe('gist-1');
+    it('refuses to upload while encryption is on without a recovery code', async () => {
+      local[PAGE] = [HIGHLIGHT];
+      const api = await freshService();
+      await configureEncryptedGist(api);
+      delete local[BACKUP_KEYS.RECOVERY_CODE];
+
+      const result = await api.runBackup();
+
+      expect(result).toMatchObject({ ok: false, code: 'backup_no_recovery_code' });
+      expect(remote.gist).toBeNull();
     });
 
     it('skips the upload when the local data has not changed, and forces it on request', async () => {
@@ -351,10 +423,10 @@ describe('backup-service', () => {
      * replaced the whole store would be testing a profile that had never been
      * configured.
      */
-    async function seedRemoteBackup(localSeed) {
+    async function seedRemoteBackup(localSeed, { encrypt = true } = {}) {
       local = installLocal(localSeed);
       const maker = await freshService();
-      const code = await configureGist(maker);
+      const code = encrypt ? await configureEncryptedGist(maker) : await configureGist(maker);
       expect(await maker.runBackup()).toMatchObject({ ok: true, uploaded: true });
 
       const api = await freshService();
@@ -369,6 +441,27 @@ describe('backup-service', () => {
 
       expect(result).toMatchObject({ ok: false, code: 'backup_decrypt_failed' });
       expect(local[PAGE]).toEqual([HIGHLIGHT]);
+    });
+
+    it('restores a plaintext backup without any recovery code', async () => {
+      const { api } = await seedRemoteBackup({ [PAGE]: [HIGHLIGHT] }, { encrypt: false });
+      expect(await api.getRecoveryCode()).toBeNull();
+
+      const preview = await api.previewRemoteBackup();
+      expect(preview).toMatchObject({ ok: true, encrypted: false });
+      expect(preview.preview).toMatchObject({ pageCount: 1, highlightCount: 1 });
+
+      delete local[PAGE];
+      const result = await api.restoreFromRemoteBackup({});
+
+      expect(result).toMatchObject({ ok: true, encrypted: false });
+      expect(local[PAGE]).toHaveLength(1);
+    });
+
+    it('reports an encrypted remote as encrypted', async () => {
+      const { api } = await seedRemoteBackup({ [PAGE]: [HIGHLIGHT] });
+
+      expect(await api.previewRemoteBackup()).toMatchObject({ ok: true, encrypted: true });
     });
 
     it('replaces the page set, restores settings and site rules, and keeps a safety copy', async () => {
@@ -516,7 +609,7 @@ describe('backup-service', () => {
           version: 1,
           destination: 'gist',
           autoEnabled: true,
-          gist: { token: TOKEN, gistId: 'gist-1', filename: 'marks-local-backup.enc.json' },
+          gist: { token: TOKEN, gistId: 'gist-1', filename: 'marks-local-backup.json' },
         },
         [BACKUP_KEYS.RECOVERY_CODE]: generateRecoveryCode(),
         [BACKUP_KEYS.LAST_SUCCESS_AT]: Date.now(),
@@ -533,26 +626,42 @@ describe('backup-service', () => {
   });
 
   describe('local export', () => {
-    it('downloads an encrypted snapshot of the current data', async () => {
+    it('downloads a plain snapshot of the current data while encryption is off', async () => {
       local[PAGE] = [HIGHLIGHT];
       const api = await freshService();
-      await api.setBackupDestination('gist');
-      await api.saveGistConfig({ token: TOKEN });
-      const code = await api.getRecoveryCode();
+
+      const result = await api.exportLocalBackup();
+
+      expect(result).toMatchObject({ ok: true, encrypted: false });
+      expect(result.filename).toMatch(/^marks-local-backup-.*\.json$/);
+      expect(result.filename).not.toContain('.enc.');
+      expect(JSON.parse(decodeDownloaded()).pages.map(page => page.url)).toEqual([PAGE]);
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    });
+
+    it('downloads a sealed snapshot when encryption is on', async () => {
+      local[PAGE] = [HIGHLIGHT];
+      const api = await freshService();
+      const code = await configureEncryptedGist(api);
 
       const result = await api.exportLocalBackup();
 
       expect(result).toMatchObject({ ok: true, encrypted: true });
+      expect(result.filename).toMatch(/^marks-local-backup-.*\.enc\.json$/);
       const text = decodeDownloaded();
       expect(text).not.toContain('a secret sentence');
       expect(text).not.toContain(PAGE);
       expect((await openBackupFromText(text, code)).ok).toBe(true);
-      expect(globalThis.fetch).not.toHaveBeenCalled();
     });
 
-    it('needs a recovery code first', async () => {
+    it('refuses to export while encryption is on without a recovery code', async () => {
+      local[PAGE] = [HIGHLIGHT];
       const api = await freshService();
+      await api.setBackupEncryption(true);
+      delete local[BACKUP_KEYS.RECOVERY_CODE];
+
       const result = await api.exportLocalBackup();
+
       expect(result).toMatchObject({ ok: false, code: 'backup_no_recovery_code' });
       expect(chrome.downloads.download).not.toHaveBeenCalled();
     });

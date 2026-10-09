@@ -765,5 +765,23 @@
   },
   "backupErrorGeneric": {
     "message": "备份操作失败。"
+  },
+  "backupEncryptLabel": {
+    "message": "加密备份"
+  },
+  "backupEncryptHelp": {
+    "message": "开启后上传的是加密封套文件，而不是你的原始数据。每个要恢复它的设备都需要下面这串恢复代码。"
+  },
+  "backupEncryptHelpOn": {
+    "message": "备份在离开本设备前，已用恢复代码加密。"
+  },
+  "backupEncryptHelpOff": {
+    "message": "关闭中：备份以明文上传，任何能拿到该文件的人都能直接读懂内容。"
+  },
+  "backupPlaintextWarning": {
+    "message": "备份将以明文上传。任何能访问到该文件的人——比如拿到 Gist 链接、或拿到 WebDAV 账号——都能读到里面每一条网页地址和划线内容。"
+  },
+  "backupRestorePlaintextWarning": {
+    "message": "该备份是未加密上传的。"
   }
 }

@@ -33,17 +33,18 @@ is an English fallback for the case where the UI has no mapping.
 | `setSiteRuleSubdomains` | `hostname`, `includeSubdomains` | `policy`, `hostname`, `updated`, `injected`, `needsRefresh`, `tornDown` | same as `setSitePolicyMode` | `handleSetSiteRuleSubdomains` |
 | `getSiteStatus` | `url?` (defaults to the active tab) | `status` | none | `handleGetSiteStatus` |
 | `getBackupState` | none | `state` | local storage read, one snapshot fingerprint | `handleGetBackupState` |
-| `setBackupDestination` | `destination` (`none`\|`gist`\|`webdav`) | `state`, `generatedRecoveryCode` | local storage write, alarm schedule; mints a recovery code on first configuration | `handleSetBackupDestination` |
+| `setBackupDestination` | `destination` (`none`\|`gist`\|`webdav`) | `state` | local storage write, alarm schedule | `handleSetBackupDestination` |
+| `setBackupEncryption` | `enabled` (boolean) | `state`, `generatedRecoveryCode` | local storage write; mints a recovery code when encryption is first turned on, and forgets the last fingerprint in either direction (the payload's shape changed, so the next run re-uploads) | `handleSetBackupEncryption` |
 | `setBackupAutoEnabled` | `enabled` | `state` | local storage write, alarm schedule, one run when switched on | `handleSetBackupAutoEnabled` |
 | `saveGistConfig` | `token?`, `gistId?`, `filename?` | `state` | local storage write; a new token or gist forgets the known remote revision | `handleSaveGistConfig` |
 | `saveWebdavConfig` | `url?`, `username?`, `password?`, `allowInsecureHttp?` | `state` | same as `saveGistConfig` | `handleSaveWebdavConfig` |
 | `generateBackupRecoveryCode` | none | `state`, `code` | local storage write | `handleGenerateBackupRecoveryCode` |
 | `saveBackupRecoveryCode` | `code` | `state` | local storage write; refuses a code that is not a valid one | `handleSaveBackupRecoveryCode` |
 | `testBackupConnection` | none | `state`, `details?` | provider request; records the remote revision it read | `handleTestBackupConnection` |
-| `runBackupNow` | `force?` | `state`, `result` | snapshot, seal, provider upload; skipped when the fingerprint is unchanged unless forced | `handleRunBackupNow` |
-| `previewRemoteBackup` | none | `preview`, `source`, `state` | provider read, decrypt, validate; records the remote revision | `handlePreviewRemoteBackup` |
-| `restoreFromRemoteBackup` | `confirm` (must be `true`), `acceptMissingSnapshot?` | `summary`, `safetySnapshot`, `state` | downloads a safety snapshot, replaces the page set, settings and site rules, re-syncs the content-script registration, redraws the menus, refreshes the restored pages | `handleRestoreFromRemoteBackup` |
-| `exportLocalBackup` | none | `filename`, `encrypted`, `state` | seals the local snapshot and downloads it | `handleExportLocalBackup` |
+| `runBackupNow` | `force?` | `state`, `result` | snapshot, then seal or serialize depending on the encryption setting, provider upload; skipped when the fingerprint is unchanged unless forced | `handleRunBackupNow` |
+| `previewRemoteBackup` | none | `preview`, `source`, `encrypted`, `state` | provider read, decrypt when the payload is a sealed envelope, validate; records the remote revision | `handlePreviewRemoteBackup` |
+| `restoreFromRemoteBackup` | `confirm` (must be `true`), `acceptMissingSnapshot?` | `summary`, `safetySnapshot`, `encrypted`, `state` | downloads a safety snapshot, replaces the page set, settings and site rules, re-syncs the content-script registration, redraws the menus, refreshes the restored pages | `handleRestoreFromRemoteBackup` |
+| `exportLocalBackup` | none | `filename`, `encrypted`, `state` | seals or serializes the local snapshot and downloads it | `handleExportLocalBackup` |
 
 ## Notes
 
@@ -54,4 +55,5 @@ is an English fallback for the case where the UI has no mapping.
 - The site actions all go through `background/site-rule-service.js`, which owns the single write queue, the content-script registration, and the hot injection / teardown of already-open tabs.
 - Every `backup*` action is gated on the sender's URL scheme: only `moz-extension://`, `chrome-extension://`, `safari-web-extension://` and `ms-browser-extension://` are answered, and anything else gets `backup_forbidden` without touching storage. The sender's `sender.tab` cannot be that test on its own, because the settings page is itself a tab. This matters because `getBackupState` answers with the recovery code.
 - The backup actions talk to `background/backup-service.js`. `runBackupNow` answers `success: true` with `result.ok === false` for a run that failed — the state is still worth returning — while every other backup action turns a failure into an error response.
+- Backups are unencrypted by default (`backupConfig.encrypt === false`): the payload is the snapshot as JSON and the recovery code is neither required nor shown. `setBackupEncryption` turns the sealed envelope on, which is when a code is minted. Reading tolerates both, because the remote may hold either; the answer says which one it was so the preview can warn before a restore. A recovery code is only demanded for a payload that actually is an envelope, so a plaintext backup restores without one.
 - `restoreFromRemoteBackup` refuses with `backup_confirm_required` unless `confirm` is exactly `true`, and with `backup_safety_snapshot_failed` when the safety copy could not be written and `acceptMissingSnapshot` is not `true`.

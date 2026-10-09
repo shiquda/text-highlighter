@@ -833,6 +833,7 @@ describe('message-router', () => {
     const BACKUP_ACTIONS = [
       { action: 'getBackupState' },
       { action: 'setBackupDestination', destination: 'gist' },
+      { action: 'setBackupEncryption', enabled: true },
       { action: 'setBackupAutoEnabled', enabled: true },
       { action: 'saveGistConfig', token: 'ghp_x' },
       { action: 'saveWebdavConfig', url: 'https://dav.example.com/x.json' },
@@ -885,15 +886,23 @@ describe('message-router', () => {
       expect(JSON.stringify(result)).not.toContain('ghp_secret');
     });
 
-    it('mints a recovery code when a destination is chosen for the first time', async () => {
+    it('mints the recovery code when encryption is turned on, not when a destination is chosen', async () => {
       const first = await send({ action: 'setBackupDestination', destination: 'webdav' }, FROM_EXTENSION);
 
       expect(first.success).toBe(true);
-      expect(typeof first.generatedRecoveryCode).toBe('string');
-      expect(first.state).toMatchObject({ destination: 'webdav', hasRecoveryCode: true, configured: false });
+      expect(first.generatedRecoveryCode).toBeNull();
+      expect(first.state).toMatchObject({ destination: 'webdav', encrypt: false, hasRecoveryCode: false, configured: false });
 
-      const second = await send({ action: 'setBackupDestination', destination: 'webdav' }, FROM_EXTENSION);
-      expect(second.generatedRecoveryCode).toBeNull();
+      const on = await send({ action: 'setBackupEncryption', enabled: true }, FROM_EXTENSION);
+      expect(on.success).toBe(true);
+      expect(typeof on.generatedRecoveryCode).toBe('string');
+      expect(on.state).toMatchObject({ encrypt: true, hasRecoveryCode: true });
+
+      const again = await send({ action: 'setBackupEncryption', enabled: true }, FROM_EXTENSION);
+      expect(again.generatedRecoveryCode).toBeNull();
+
+      const off = await send({ action: 'setBackupEncryption', enabled: false }, FROM_EXTENSION);
+      expect(off.state).toMatchObject({ encrypt: false, hasRecoveryCode: true });
     });
 
     it('rejects a recovery code that is not one', async () => {
@@ -912,6 +921,54 @@ describe('message-router', () => {
       expect(result).toMatchObject({ success: false, code: 'backup_confirm_required' });
       expect(globalThis.fetch).not.toHaveBeenCalled();
       expect(chrome.downloads.download).not.toHaveBeenCalled();
+    });
+
+    it('carries the payload shape through preview, restore and export', async () => {
+      // Each of these actions answers with `encrypted`, and the settings page
+      // decides whether to warn the user from it: dropping the flag anywhere
+      // along the way turns a warning into silence. The remote is filled by a
+      // real run, so the payload is the one the service actually writes.
+      local[PAGE] = [{
+        groupId: 'h1',
+        color: 'yellow',
+        text: 'a secret sentence',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        spans: [{ text: 'a secret', position: 0 }],
+      }];
+      local[`${PAGE}${STORAGE_KEYS.META_SUFFIX}`] = { title: 'Article title', lastUpdated: '2026-01-01T00:00:00.000Z' };
+      local.backupConfig = {
+        destination: 'webdav',
+        webdav: { url: 'https://dav.example.com/x.json', allowInsecureHttp: true },
+      };
+
+      let uploaded = null;
+      globalThis.fetch = jest.fn(async (url, options = {}) => {
+        const headers = new Map([['etag', '"w1"']]);
+        if (options.method === 'PUT') {
+          uploaded = options.body;
+          return { ok: true, status: 201, headers, text: async () => '' };
+        }
+        if (options.method === 'HEAD') {
+          return { ok: true, status: uploaded ? 200 : 404, headers, text: async () => '' };
+        }
+        return { ok: true, status: uploaded ? 200 : 404, headers, text: async () => uploaded || '' };
+      });
+
+      const run = await send({ action: 'runBackupNow', force: true }, FROM_EXTENSION);
+      expect(run.result).toMatchObject({ ok: true, uploaded: true });
+      expect(uploaded).toContain(PAGE);
+      expect(JSON.parse(uploaded).format).toBeUndefined();
+
+      const preview = await send({ action: 'previewRemoteBackup' }, FROM_EXTENSION);
+      expect(preview).toMatchObject({ success: true, encrypted: false });
+      expect(preview.preview.pageCount).toBe(1);
+
+      const restored = await send({ action: 'restoreFromRemoteBackup', confirm: true }, FROM_EXTENSION);
+      expect(restored).toMatchObject({ success: true, encrypted: false });
+
+      const exported = await send({ action: 'exportLocalBackup' }, FROM_EXTENSION);
+      expect(exported).toMatchObject({ success: true, encrypted: false });
+      expect(exported.filename).not.toContain('.enc.');
     });
 
     it('reports a backup run that found nothing to upload as a success with no upload', async () => {

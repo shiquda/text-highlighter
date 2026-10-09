@@ -787,13 +787,14 @@ describe('settings', () => {
       expect(byId('backup-gist-config').style.display).not.toBe('none');
     });
 
-    it('shows the first generatedRecoveryCode prominently', async () => {
+    it('shows the first generatedRecoveryCode prominently when encryption is turned on', async () => {
       respondToBackground({
-        setBackupDestination: {
+        setBackupEncryption: {
           success: true,
           state: {
             ...DEFAULT_BACKUP_STATE,
             destination: 'gist',
+            encrypt: true,
             hasRecoveryCode: true,
             recoveryCode: 'fresh-code-xyz',
           },
@@ -802,14 +803,44 @@ describe('settings', () => {
       });
       await openSettings();
 
-      const gistRadio = byId('backup-dest-gist');
-      gistRadio.checked = true;
-      gistRadio.dispatchEvent(new Event('change'));
+      const toggle = byId('backup-encrypt-toggle');
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event('change'));
       await flush();
 
+      expect(lastMessage('setBackupEncryption')).toEqual({ action: 'setBackupEncryption', enabled: true });
       expect(byId('backup-new-code-banner').style.display).not.toBe('none');
       expect(byId('backup-generated-code-value').textContent).toBe('fresh-code-xyz');
       expect(byId('backup-recovery-code-display').textContent).toBe('fresh-code-xyz');
+    });
+
+    it('keeps the recovery code off screen and warns while encryption is off', async () => {
+      await openSettings();
+
+      // Nothing to encrypt with, so there is nothing to save - and the user is
+      // told what the upload they are about to configure actually is.
+      expect(byId('backup-recovery-area').style.display).toBe('none');
+      expect(byId('backup-plaintext-warning').style.display).not.toBe('none');
+      expect(byId('backup-encrypt-toggle').checked).toBe(false);
+    });
+
+    it('swaps the warning for the recovery code once encryption is on', async () => {
+      respondToBackground({
+        setBackupEncryption: {
+          success: true,
+          state: { ...DEFAULT_BACKUP_STATE, destination: 'webdav', encrypt: true, hasRecoveryCode: true, recoveryCode: 'c' },
+          generatedRecoveryCode: null,
+        },
+      });
+      await openSettings();
+
+      const toggle = byId('backup-encrypt-toggle');
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event('change'));
+      await flush();
+
+      expect(byId('backup-recovery-area').style.display).not.toBe('none');
+      expect(byId('backup-plaintext-warning').style.display).toBe('none');
     });
 
     it('sends setBackupAutoEnabled when auto toggle is toggled', async () => {
@@ -909,6 +940,34 @@ describe('settings', () => {
         confirm: true,
       });
 
+      confirmSpy.mockRestore();
+    });
+
+    it('says an unencrypted remote backup is unencrypted before restoring it', async () => {
+      respondToBackground({
+        previewRemoteBackup: {
+          success: true,
+          encrypted: false,
+          preview: { pageCount: 1, highlightCount: 2, siteCount: 0 },
+        },
+        restoreFromRemoteBackup: {
+          success: true,
+          summary: {},
+          safetySnapshot: { ok: true, filename: 'safety.json' },
+          state: DEFAULT_BACKUP_STATE,
+        },
+      });
+      await openSettings();
+
+      const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValueOnce(true);
+      byId('backup-restore-btn').click();
+      await flush();
+
+      // The mode this device is set to says nothing about what was uploaded, so
+      // the prompt has to carry the answer.
+      const message = confirmSpy.mock.calls[0][0];
+      expect(message).toContain('backupRestorePlaintextWarning');
+      expect(message).toContain('backupRestoreConfirm');
       confirmSpy.mockRestore();
     });
 

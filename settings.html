@@ -885,6 +885,31 @@
           </div>
         </div>
 
+        <!-- Encryption Mode -->
+        <div class="toggle-container" id="backup-encrypt-row">
+          <div class="toggle-label">
+            <label for="backup-encrypt-toggle" data-i18n="backupEncryptLabel">Encrypt backups</label>
+            <span class="help-tip" tabindex="0">
+              ?
+              <span class="help-bubble" data-i18n="backupEncryptHelp">
+                Encrypting uploads a sealed file instead of your data. It needs the recovery code below, on every device that restores it.
+              </span>
+            </span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="backup-encrypt-toggle" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <p id="backup-encrypt-help" class="hint-text" data-i18n="backupEncryptHelpOn">
+          Your backups are encrypted with the recovery code before they leave this device.
+        </p>
+        <div id="backup-plaintext-warning" class="backup-warning-banner" style="display:none" role="alert">
+          <div class="backup-banner-title" data-i18n="backupPlaintextWarning">
+            Backups are uploaded as plain text. Anyone who can reach the file - a shared Gist link, a leaked WebDAV account - can read every page address and highlight in it.
+          </div>
+        </div>
+
         <!-- Destination Selector -->
         <div class="form-group">
           <label data-i18n="backupDestinationLabel">Backup destination</label>

@@ -765,5 +765,23 @@
   },
   "backupErrorGeneric": {
     "message": "Backup operation failed."
+  },
+  "backupEncryptLabel": {
+    "message": "Encrypt backups"
+  },
+  "backupEncryptHelp": {
+    "message": "Encrypting uploads a sealed file instead of your data. It needs the recovery code below, on every device that restores it."
+  },
+  "backupEncryptHelpOn": {
+    "message": "Your backups are encrypted with the recovery code before they leave this device."
+  },
+  "backupEncryptHelpOff": {
+    "message": "Off: your backups are uploaded as plain text. Anyone who can reach the file can read it."
+  },
+  "backupPlaintextWarning": {
+    "message": "Backups are uploaded as plain text. Anyone who can reach the file - a shared Gist link, a leaked WebDAV account - can read every page address and highlight in it."
+  },
+  "backupRestorePlaintextWarning": {
+    "message": "This backup was uploaded unencrypted."
   }
 }

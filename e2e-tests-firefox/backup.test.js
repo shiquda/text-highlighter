@@ -55,12 +55,22 @@ describe('Firefox backup round trip', { concurrency: 1, timeout: 120_000 }, () =
       { text: PARAGRAPH, background: 'rgb(255, 255, 0)' },
     ]);
 
+    // A fresh profile has to come up unencrypted: that is the shipped default,
+    // and a code that appears before the user asked for one is exactly the
+    // friction the mode exists to remove.
+    const initial = await send({ action: 'getBackupState' });
+    assert.equal(initial.state.encrypt, false, 'a fresh profile did not start unencrypted');
+    assert.equal(initial.state.hasRecoveryCode, false, 'a recovery code existed before it was needed');
+
+    const encrypted = await send({ action: 'setBackupEncryption', enabled: true });
+    assert.equal(encrypted.success, true, JSON.stringify(encrypted));
+    const recoveryCode = encrypted.generatedRecoveryCode;
+    assert.ok(recoveryCode, 'no recovery code was minted when encryption was turned on');
+
     // A destination that is a host on this machine over plain HTTP: the one
     // combination the fake-fetch tests cannot try.
     const configured = await send({ action: 'setBackupDestination', destination: 'webdav' });
     assert.equal(configured.success, true, JSON.stringify(configured));
-    const recoveryCode = configured.generatedRecoveryCode;
-    assert.ok(recoveryCode, 'no recovery code was generated for a new destination');
 
     const saved = await send({
       action: 'saveWebdavConfig',
@@ -90,6 +100,7 @@ describe('Firefox backup round trip', { concurrency: 1, timeout: 120_000 }, () =
 
     const preview = await send({ action: 'previewRemoteBackup' });
     assert.equal(preview.success, true, JSON.stringify(preview));
+    assert.equal(preview.encrypted, true, 'the preview did not report the payload as sealed');
     assert.equal(preview.preview.pageCount, 1);
     assert.equal(preview.preview.highlightCount, 1);
 
@@ -165,4 +176,59 @@ describe('Firefox backup round trip', { concurrency: 1, timeout: 120_000 }, () =
     assert.equal(preview.success, true, JSON.stringify(preview));
     assert.ok(preview.preview.pageCount >= 1, 'the second server had nothing to preview');
   });
+  it('uploads and restores a plaintext backup with no recovery code at all', async () => {
+    await harness.openPage('test-page.html');
+    assert.ok(await harness.waitForContentScript(), 'the content script never came up in the page');
+    await harness.inPage(function () {
+      const paragraph = [...document.querySelectorAll('p')]
+        .find(el => el.textContent.includes('This is a sample paragraph'));
+      const range = document.createRange();
+      range.selectNodeContents(paragraph);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    assert.ok((await harness.sendToPage({ action: 'highlight', color: 'yellow' })).ok);
+
+    const off = await send({ action: 'setBackupEncryption', enabled: false });
+    assert.equal(off.success, true, JSON.stringify(off));
+    assert.equal(off.state.encrypt, false);
+    assert.equal(off.state.hasRecoveryCode, true, 'turning encryption off discarded the code the old backups need');
+
+    const saved = await send({
+      action: 'saveWebdavConfig',
+      url: harness.secureDavUrl,
+      username: 'marks',
+      password: 'local-only',
+      allowInsecureHttp: true,
+    });
+    assert.equal(saved.success, true, JSON.stringify(saved));
+    assert.equal((await send({ action: 'runBackupNow', force: true })).result.uploaded, true);
+
+    // The whole point of the mode: what lands on the server is readable. This
+    // is what the user chose, so the test says so instead of pretending.
+    assert.ok(harness.secureDav.body.includes('This is a sample paragraph'),
+      'the plaintext mode did not upload readable text');
+
+    const preview = await send({ action: 'previewRemoteBackup' });
+    assert.equal(preview.success, true, JSON.stringify(preview));
+    assert.equal(preview.encrypted, false, 'the preview called a plaintext backup encrypted');
+
+    const cleared = await send({ action: 'deleteAllHighlightedPages' });
+    assert.equal(cleared.success, true, JSON.stringify(cleared));
+    assert.equal((await send({ action: 'getAllHighlightedPages' })).pages.length, 0);
+
+    const restored = await send({ action: 'restoreFromRemoteBackup', confirm: true });
+    assert.equal(restored.success, true, JSON.stringify(restored));
+    assert.equal(restored.encrypted, false);
+    assert.equal(restored.summary.restoredPages, 1);
+
+    await harness.reloadPage();
+    assert.deepEqual(
+      await harness.waitInPage(drawnHighlights),
+      [{ text: PARAGRAPH, background: 'rgb(255, 255, 0)' }],
+      'the plaintext backup did not come back'
+    );
+  });
+
 });

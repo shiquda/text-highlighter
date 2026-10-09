@@ -92,7 +92,7 @@ describe('backup-provider-gist', () => {
           body: {
             id: 'g123',
             files: {
-              'marks-local-backup.enc.json': { content: sampleText },
+              'marks-local-backup.json': { content: sampleText },
             },
           },
         });
@@ -138,8 +138,8 @@ describe('backup-provider-gist', () => {
             id: 'g123',
             updated_at: '2026-10-09T01:00:00Z',
             files: {
-              'marks-local-backup.enc.json': {
-                filename: 'marks-local-backup.enc.json',
+              'marks-local-backup.json': {
+                filename: 'marks-local-backup.json',
                 truncated: false,
                 content: sampleText,
               },
@@ -186,10 +186,10 @@ describe('backup-provider-gist', () => {
               id: 'g123',
               updated_at: '2026-10-09T01:00:00Z',
               files: {
-                'marks-local-backup.enc.json': {
-                  filename: 'marks-local-backup.enc.json',
+                'marks-local-backup.json': {
+                  filename: 'marks-local-backup.json',
                   truncated: true,
-                  raw_url: 'https://gist.githubusercontent.com/user/g123/raw/marks-local-backup.enc.json',
+                  raw_url: 'https://gist.githubusercontent.com/user/g123/raw/marks-local-backup.json',
                 },
               },
             },
@@ -221,8 +221,8 @@ describe('backup-provider-gist', () => {
             id: 'g123',
             updated_at: '2026-10-09T01:00:00Z',
             files: {
-              'marks-local-backup.enc.json': {
-                filename: 'marks-local-backup.enc.json',
+              'marks-local-backup.json': {
+                filename: 'marks-local-backup.json',
                 truncated: true,
                 raw_url: 'https://evil-untrusted-server.com/raw/backup.json',
               },
@@ -246,7 +246,7 @@ describe('backup-provider-gist', () => {
           id: 'g123',
           updated_at: '2026-10-09T01:00:00Z',
           files: {
-            'marks-local-backup.enc.json': {
+            'marks-local-backup.json': {
               truncated: true,
             },
           },
@@ -289,8 +289,8 @@ describe('backup-provider-gist', () => {
 
       const parsedBody = JSON.parse(calls[0].opts.body);
       expect(parsedBody.public).toBe(false);
-      expect(parsedBody.description).toBe('Marks Local encrypted backup');
-      expect(parsedBody.files['marks-local-backup.enc.json'].content).toBe(sampleText);
+      expect(parsedBody.description).toBe('Marks Local backup');
+      expect(parsedBody.files['marks-local-backup.json'].content).toBe(sampleText);
     });
 
     it('updates existing gist via PATCH touching only the one file', async () => {
@@ -304,7 +304,7 @@ describe('backup-provider-gist', () => {
               id: 'g123',
               updated_at: 'v1',
               files: {
-                'marks-local-backup.enc.json': { content: 'old' },
+                'marks-local-backup.json': { content: 'old' },
                 'unrelated-notes.txt': { content: 'keep this untouched' },
               },
             },
@@ -332,8 +332,8 @@ describe('backup-provider-gist', () => {
       expect(calls[1].opts.method).toBe('PATCH');
 
       const patchBody = JSON.parse(calls[1].opts.body);
-      expect(Object.keys(patchBody.files)).toEqual(['marks-local-backup.enc.json']);
-      expect(patchBody.files['marks-local-backup.enc.json'].content).toBe(sampleText);
+      expect(Object.keys(patchBody.files)).toEqual(['marks-local-backup.json']);
+      expect(patchBody.files['marks-local-backup.json'].content).toBe(sampleText);
     });
 
     it('detects version mismatch when force is false and asserts NO write request was made', async () => {
@@ -346,7 +346,7 @@ describe('backup-provider-gist', () => {
             id: 'g123',
             updated_at: 'v-actual-remote',
             files: {
-              'marks-local-backup.enc.json': { content: 'old' },
+              'marks-local-backup.json': { content: 'old' },
             },
           },
         });
@@ -376,7 +376,7 @@ describe('backup-provider-gist', () => {
             id: 'g123',
             updated_at: 'v1',
             files: {
-              'marks-local-backup.enc.json': { content: 'existing' },
+              'marks-local-backup.json': { content: 'existing' },
             },
           },
         });

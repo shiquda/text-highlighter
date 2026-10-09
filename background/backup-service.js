@@ -12,6 +12,8 @@ import {
 } from '../constants/backup-config.js';
 import {
   BACKUP_FILENAME,
+  serializeSnapshot,
+  isBackupEnvelope,
   buildBackupSnapshot,
   validateBackupSnapshot,
   describeBackupSnapshot,
@@ -34,6 +36,10 @@ const DEFAULT_CONFIG = Object.freeze({
   version: 1,
   destination: 'none',
   autoEnabled: false,
+  // Off by default: a backup is a copy of everything the user has read and
+  // highlighted, and the recovery code is friction they have to accept before
+  // the payload stops being readable on the other end.
+  encrypt: false,
   gist: { token: '', gistId: '', filename: BACKUP_FILENAME },
   webdav: { url: '', username: '', password: '', allowInsecureHttp: false },
   // The remote revision this device last read or wrote, per destination. It is
@@ -66,6 +72,7 @@ function normalizeConfig(raw) {
     config.destination = raw.destination;
   }
   config.autoEnabled = raw.autoEnabled === true;
+  config.encrypt = raw.encrypt === true;
   config.retryCount = Number.isInteger(raw.retryCount) && raw.retryCount > 0 ? raw.retryCount : 0;
   config.updatedAt = Number.isFinite(raw.updatedAt) ? raw.updatedAt : 0;
 
@@ -169,6 +176,7 @@ export async function getBackupState() {
   return {
     destination: config.destination,
     autoEnabled: config.autoEnabled,
+    encrypt: config.encrypt,
     hasRecoveryCode: Boolean(code),
     recoveryCode: code,
     gist: {
@@ -186,31 +194,48 @@ export async function getBackupState() {
     lastError: lastError && typeof lastError === 'object' ? lastError : null,
     localFingerprint,
     upToDate: Boolean(lastFingerprint) && lastFingerprint === localFingerprint,
-    configured: isConfigured(config) && Boolean(code),
+    configured: isConfigured(config) && (!config.encrypt || Boolean(code)),
   };
 }
 
 /**
- * Point the backup at a destination, minting a recovery code the first time.
+ * Point the backup at a destination.
  *
- * First configuration is when the code is shown and has to be written down, so
- * generating it here (rather than requiring a separate click) is what keeps the
- * "restore on a new device" path from being a surprise later.
+ * No recovery code here: with encryption off there is nothing for it to do,
+ * and a code the user is told to save but never needs is how the one that does
+ * matter gets ignored.
  */
 export async function setBackupDestination(destination) {
   if (destination !== 'none' && !DEPLOYED_DESTINATIONS.includes(destination)) {
     return { ok: false, code: BACKUP_ERRORS.NOT_CONFIGURED, message: `Unknown backup destination: ${destination}` };
   }
 
+  const config = await writeBackupConfig({ destination });
+  await scheduleAutomaticBackup(config);
+  return { ok: true };
+}
+
+/**
+ * Turn encryption on or off.
+ *
+ * Turning it on is when a recovery code appears, so that is where it is minted;
+ * an existing code is kept, because the backups it already opened would
+ * otherwise become unreadable the moment the toggle is flipped. Either
+ * direction forgets the last fingerprint: the payload's shape changed, so the
+ * next run has to upload even though the local data did not move.
+ */
+export async function setBackupEncryption(enabled) {
+  const encrypt = enabled === true;
+
   let generatedRecoveryCode = null;
-  if (destination !== 'none' && !(await getRecoveryCode())) {
+  if (encrypt && !(await getRecoveryCode())) {
     generatedRecoveryCode = generateRecoveryCode();
     await browserAPI.storage.local.set({ [BACKUP_KEYS.RECOVERY_CODE]: generatedRecoveryCode });
   }
 
-  const config = await writeBackupConfig({ destination });
-  await scheduleAutomaticBackup(config);
-  return { ok: true, generatedRecoveryCode };
+  await writeBackupConfig({ encrypt });
+  await browserAPI.storage.local.set({ [BACKUP_KEYS.LAST_FINGERPRINT]: null });
+  return { ok: true, encrypt, generatedRecoveryCode };
 }
 
 export async function setBackupAutoEnabled(enabled) {
@@ -334,8 +359,11 @@ async function uploadOnce({ force, automatic }) {
   if (!provider) return recordFailure(BACKUP_ERRORS.NOT_CONFIGURED, 'Choose a backup destination first.');
   if (!isConfigured(config)) return recordFailure(BACKUP_ERRORS.NOT_CONFIGURED, 'Fill in the destination settings first.');
 
-  const code = await getRecoveryCode();
-  if (!code) return recordFailure(BACKUP_ERRORS.NO_RECOVERY_CODE, 'No backup recovery code is set on this device.');
+  let code = null;
+  if (config.encrypt) {
+    code = await getRecoveryCode();
+    if (!code) return recordFailure(BACKUP_ERRORS.NO_RECOVERY_CODE, 'No backup recovery code is set on this device.');
+  }
 
   const snapshot = await buildLocalSnapshot();
   const fingerprint = await computeSnapshotFingerprint(snapshot);
@@ -345,7 +373,7 @@ async function uploadOnce({ force, automatic }) {
     return { ok: true, uploaded: false, fingerprint, message: 'Nothing has changed since the last backup.' };
   }
 
-  const text = await sealBackupToText(snapshot, code);
+  const text = config.encrypt ? await sealBackupToText(snapshot, code) : serializeSnapshot(snapshot);
   const knownVersion = config.remote[config.destination].version;
   const write = await provider.writeRemote(providerConfig(config), { text }, {
     expectedVersion: knownVersion === null ? undefined : knownVersion,
@@ -440,15 +468,19 @@ function timestampSuffix() {
 }
 
 export async function exportLocalBackup() {
-  const code = await getRecoveryCode();
-  if (!code) return failure(BACKUP_ERRORS.NO_RECOVERY_CODE, 'Generate a recovery code before exporting.');
+  const config = await getBackupConfig();
+  const code = config.encrypt ? await getRecoveryCode() : null;
+  if (config.encrypt && !code) {
+    return failure(BACKUP_ERRORS.NO_RECOVERY_CODE, 'Generate a recovery code before exporting.');
+  }
 
   try {
     const snapshot = await buildLocalSnapshot();
-    const text = await sealBackupToText(snapshot, code);
-    const filename = `marks-local-backup-${timestampSuffix()}.enc.json`;
+    const text = config.encrypt ? await sealBackupToText(snapshot, code) : serializeSnapshot(snapshot);
+    const suffix = config.encrypt ? '.enc.json' : '.json';
+    const filename = `marks-local-backup-${timestampSuffix()}${suffix}`;
     await downloadText(text, filename);
-    return { ok: true, filename, encrypted: true };
+    return { ok: true, filename, encrypted: config.encrypt };
   } catch (e) {
     return recordFailure(BACKUP_ERRORS.DOWNLOAD_FAILED, e.message);
   }
@@ -460,31 +492,50 @@ async function readAndOpenRemote() {
   if (!provider) return failure(BACKUP_ERRORS.NOT_CONFIGURED, 'Choose a backup destination first.');
   if (!isConfigured(config)) return failure(BACKUP_ERRORS.NOT_CONFIGURED, 'Fill in the destination settings first.');
 
-  const code = await getRecoveryCode();
-  if (!code) return failure(BACKUP_ERRORS.NO_RECOVERY_CODE, 'No backup recovery code is set on this device.');
-
   const remote = await provider.readRemote(providerConfig(config));
   if (!remote.ok) return remote;
   if (!remote.exists) return failure(BACKUP_ERRORS.NOT_FOUND, 'There is no backup at that destination yet.');
   await rememberRemoteVersion(config.destination, remote.version);
 
-  const opened = await openBackupFromText(remote.text, code);
-  if (!opened.ok) return opened;
+  let parsed;
+  try {
+    parsed = JSON.parse(remote.text);
+  } catch {
+    return failure(BACKUP_ERRORS.INVALID_FORMAT, 'The remote backup is not JSON.');
+  }
 
-  const validation = validateBackupSnapshot(opened.snapshot);
+  // A sealed envelope needs the code; a snapshot that arrives as plain JSON is
+  // used as it is, because that is what the unencrypted mode uploaded. The
+  // answer remembers which one it was so the preview can say so out loud.
+  const encrypted = isBackupEnvelope(parsed);
+  let snapshot = parsed;
+  if (encrypted) {
+    const code = await getRecoveryCode();
+    if (!code) return failure(BACKUP_ERRORS.NO_RECOVERY_CODE, 'No backup recovery code is set on this device.');
+    const opened = await openBackupFromText(remote.text, code);
+    if (!opened.ok) return opened;
+    snapshot = opened.snapshot;
+  }
+
+  const validation = validateBackupSnapshot(snapshot);
   if (!validation.valid) {
     const code_ = validation.reason === 'unsupported-version' ? BACKUP_ERRORS.UNSUPPORTED_VERSION : BACKUP_ERRORS.INVALID_FORMAT;
     return failure(code_, `The remote backup could not be read: ${validation.reason}`);
   }
 
-  return { ok: true, snapshot: validation.snapshot, source: config.destination };
+  return { ok: true, snapshot: validation.snapshot, source: config.destination, encrypted };
 }
 
 export async function previewRemoteBackup() {
   const opened = await readAndOpenRemote();
   if (!opened.ok) return recordFailure(opened.code, opened.message);
 
-  return { ok: true, source: opened.source, preview: describeBackupSnapshot(opened.snapshot) };
+  return {
+    ok: true,
+    source: opened.source,
+    encrypted: opened.encrypted,
+    preview: describeBackupSnapshot(opened.snapshot),
+  };
 }
 
 async function applySnapshot(snapshot) {
@@ -540,12 +591,20 @@ export async function restoreFromRemoteBackup({ acceptMissingSnapshot = false } 
   const opened = await readAndOpenRemote();
   if (!opened.ok) return recordFailure(opened.code, opened.message);
 
-  const code = await getRecoveryCode();
+  // Refuse before overwriting anything if the safety copy cannot even be
+  // written: a restore that the user cannot undo has to be their choice.
+  const config = await getBackupConfig();
+  const code = config.encrypt ? await getRecoveryCode() : null;
+  if (config.encrypt && !code) {
+    return recordFailure(BACKUP_ERRORS.NO_RECOVERY_CODE, 'No backup recovery code is set on this device.');
+  }
+
   let safetySnapshot = { ok: true };
   try {
     const current = await buildLocalSnapshot();
-    const text = await sealBackupToText(current, code);
-    const filename = `marks-local-safety-${timestampSuffix()}.enc.json`;
+    const text = config.encrypt ? await sealBackupToText(current, code) : serializeSnapshot(current);
+    const suffix = config.encrypt ? '.enc.json' : '.json';
+    const filename = `marks-local-safety-${timestampSuffix()}${suffix}`;
     await downloadText(text, filename);
     safetySnapshot = { ok: true, filename };
   } catch (e) {
@@ -578,6 +637,7 @@ export async function restoreFromRemoteBackup({ acceptMissingSnapshot = false } 
 
   return {
     ok: true,
+    encrypted: opened.encrypted,
     summary: {
       ...describeBackupSnapshot(opened.snapshot),
       restoredPages: applied.pages,

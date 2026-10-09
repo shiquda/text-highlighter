@@ -753,6 +753,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const backupDestGist = document.getElementById('backup-dest-gist');
   const backupDestWebdav = document.getElementById('backup-dest-webdav');
 
+  const backupEncryptToggle = document.getElementById('backup-encrypt-toggle');
+  const backupEncryptHelp = document.getElementById('backup-encrypt-help');
+  const backupPlaintextWarning = document.getElementById('backup-plaintext-warning');
+  const backupRecoveryArea = document.getElementById('backup-recovery-area');
+
   const backupNewCodeBanner = document.getElementById('backup-new-code-banner');
   const backupGeneratedCodeValue = document.getElementById('backup-generated-code-value');
   const backupCopyGeneratedCodeBtn = document.getElementById('backup-copy-generated-code-btn');
@@ -860,6 +865,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       backupWebdavInsecureHttp.checked = state.webdav.allowInsecureHttp === true;
     }
 
+    // The recovery code only exists to open an encrypted backup, so it is not
+    // on screen while encryption is off - a code the user is told to guard but
+    // never needs is how the one that matters gets ignored.
+    const encrypting = state.encrypt === true;
+    backupEncryptToggle.checked = encrypting;
+    backupRecoveryArea.style.display = encrypting ? '' : 'none';
+    if (!encrypting) backupNewCodeBanner.style.display = 'none';
+    backupEncryptHelp.textContent = browserAPI.i18n.getMessage(
+      encrypting ? 'backupEncryptHelpOn' : 'backupEncryptHelpOff'
+    ) || backupEncryptHelp.textContent;
+    backupPlaintextWarning.style.display = encrypting ? 'none' : '';
+
     backupRecoveryCodeDisplay.textContent = state.recoveryCode || '';
     backupAutoToggle.checked = state.autoEnabled === true;
 
@@ -899,10 +916,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     if (response && response.success) {
-      if (response.generatedRecoveryCode) {
-        backupGeneratedCodeValue.textContent = response.generatedRecoveryCode;
-        backupNewCodeBanner.style.display = '';
-      }
       if (response.state) {
         renderBackupState(response.state);
       }
@@ -1046,6 +1059,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  backupEncryptToggle.addEventListener('change', async () => {
+    clearError(backupActionError);
+    const response = await sendToBackground({
+      action: 'setBackupEncryption',
+      enabled: backupEncryptToggle.checked
+    });
+
+    if (!response || !response.success) {
+      backupEncryptToggle.checked = !backupEncryptToggle.checked;
+      showError(backupActionError, getBackupErrorMessage(response?.code, response?.error));
+      return;
+    }
+
+    if (response.generatedRecoveryCode) {
+      backupGeneratedCodeValue.textContent = response.generatedRecoveryCode;
+      backupNewCodeBanner.style.display = '';
+    }
+    if (response.state) renderBackupState(response.state);
+  });
+
   backupAutoToggle.addEventListener('change', async () => {
     const response = await sendToBackground({
       action: 'setBackupAutoEnabled',
@@ -1088,7 +1121,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       String(preview.siteCount ?? 0)
     ]) || `Remote backup contains ${preview.pageCount ?? 0} pages, ${preview.highlightCount ?? 0} highlights, and ${preview.siteCount ?? 0} site rules. Restore this backup and replace your local data?`;
 
-    const confirmed = await askConfirm(confirmMessage);
+    // The remote can hold either shape, and the mode this device is set to says
+    // nothing about what was actually uploaded. Say which one this is before
+    // anything is replaced.
+    const confirmText = previewRes.encrypted === false
+      ? `${browserAPI.i18n.getMessage('backupRestorePlaintextWarning') || 'This backup was uploaded unencrypted.'}\n\n${confirmMessage}`
+      : confirmMessage;
+
+    const confirmed = await askConfirm(confirmText);
     if (!confirmed) return;
 
     let restoreRes = await sendToBackground({

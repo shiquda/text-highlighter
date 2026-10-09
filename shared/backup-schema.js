@@ -15,7 +15,10 @@ import { normalizeSitePolicy, normalizeSiteMode } from './site-rules.js';
 
 export const BACKUP_SCHEMA_VERSION = 1;
 export const BACKUP_APP_ID = 'marks-local';
-export const BACKUP_FILENAME = 'marks-local-backup.enc.json';
+// The name the backup is stored under remotely. It does not carry the mode: a
+// mode change that renamed the file would leave the previous one behind at the
+// destination, and the payload already says which shape it is.
+export const BACKUP_FILENAME = 'marks-local-backup.json';
 export const BACKUP_FORMAT = 'marks-local-backup';
 
 export const DEFAULT_BACKUP_SETTINGS = Object.freeze({
@@ -362,6 +365,17 @@ export function isBackupEnvelope(value) {
     typeof value.ciphertext === 'string' &&
     typeof value.alg === 'string' &&
     typeof value.kdf === 'string';
+}
+
+/**
+ * Serialize a snapshot as the plaintext backup payload.
+ *
+ * This is the unencrypted twin of `sealBackupToText`: the same snapshot, no
+ * envelope around it. What it writes is readable by anyone holding the file, so
+ * it is only ever produced when the user turned encryption off.
+ */
+export function serializeSnapshot(snapshot) {
+  return JSON.stringify(snapshot, null, 2);
 }
 
 /**

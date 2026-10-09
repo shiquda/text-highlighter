@@ -13,24 +13,42 @@ test.describe('Backup', () => {
   // The messages come from the settings page rather than from the service
   // worker: Chrome does not deliver a runtime message to the sender's own
   // context, so the worker cannot talk to itself.
-  test('mints a recovery code and exports an encrypted backup', async ({ context, extensionId }) => {
+  test('exports a plain backup until encryption is turned on, then a sealed one', async ({ context, extensionId }) => {
     const page = await context.newPage();
     await page.goto(`chrome-extension://${extensionId}/settings.html`);
 
     const state = await page.evaluate(() => chrome.runtime.sendMessage({ action: 'getBackupState' }));
     expect(state.success).toBe(true);
-    expect(state.state).toMatchObject({ destination: 'none', hasRecoveryCode: false, configured: false });
+    expect(state.state).toMatchObject({
+      destination: 'none',
+      encrypt: false,
+      hasRecoveryCode: false,
+      configured: false,
+    });
 
     const configured = await page.evaluate(
       () => chrome.runtime.sendMessage({ action: 'setBackupDestination', destination: 'webdav' })
     );
     expect(configured.success).toBe(true);
-    expect(typeof configured.generatedRecoveryCode).toBe('string');
+    expect(configured.generatedRecoveryCode).toBeNull();
 
-    const exported = await page.evaluate(() => chrome.runtime.sendMessage({ action: 'exportLocalBackup' }));
-    expect(exported.success).toBe(true);
-    expect(exported.encrypted).toBe(true);
-    expect(exported.filename).toMatch(/^marks-local-backup-.*\.enc\.json$/);
+    // The default: no code exists, and the download is the snapshot itself.
+    const plain = await page.evaluate(() => chrome.runtime.sendMessage({ action: 'exportLocalBackup' }));
+    expect(plain.success).toBe(true);
+    expect(plain.encrypted).toBe(false);
+    expect(plain.filename).toMatch(/^marks-local-backup-.*\.json$/);
+    expect(plain.filename).not.toContain('.enc.');
+
+    const on = await page.evaluate(
+      () => chrome.runtime.sendMessage({ action: 'setBackupEncryption', enabled: true })
+    );
+    expect(on.success).toBe(true);
+    expect(typeof on.generatedRecoveryCode).toBe('string');
+
+    const sealed = await page.evaluate(() => chrome.runtime.sendMessage({ action: 'exportLocalBackup' }));
+    expect(sealed.success).toBe(true);
+    expect(sealed.encrypted).toBe(true);
+    expect(sealed.filename).toMatch(/^marks-local-backup-.*\.enc\.json$/);
   });
 
   test('refuses the backup state to a page', async ({ context, background }) => {

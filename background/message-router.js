@@ -28,6 +28,7 @@ import {
 import {
   getBackupState,
   setBackupDestination,
+  setBackupEncryption,
   setBackupAutoEnabled,
   saveGistConfig,
   saveWebdavConfig,
@@ -445,6 +446,14 @@ async function handleSetBackupDestination(message) {
   });
 }
 
+async function handleSetBackupEncryption(message) {
+  const result = await setBackupEncryption(message.enabled === true);
+  return successResponse({
+    state: await getBackupState(),
+    generatedRecoveryCode: result.generatedRecoveryCode || null,
+  });
+}
+
 async function handleSetBackupAutoEnabled(message) {
   await setBackupAutoEnabled(message.enabled === true);
   return successResponse({ state: await getBackupState() });
@@ -488,7 +497,12 @@ async function handleRunBackupNow(message) {
 async function handlePreviewRemoteBackup(_message) {
   const result = await previewRemoteBackup();
   if (!result.ok) return errorResponse(result.message, result.code, { state: await getBackupState() });
-  return successResponse({ preview: result.preview, source: result.source, state: await getBackupState() });
+  return successResponse({
+    preview: result.preview,
+    source: result.source,
+    encrypted: result.encrypted,
+    state: await getBackupState(),
+  });
 }
 
 async function handleRestoreFromRemoteBackup(message) {
@@ -504,6 +518,7 @@ async function handleRestoreFromRemoteBackup(message) {
   return successResponse({
     summary: result.summary,
     safetySnapshot: result.safetySnapshot,
+    encrypted: result.encrypted,
     state: await getBackupState(),
   });
 }
@@ -511,7 +526,7 @@ async function handleRestoreFromRemoteBackup(message) {
 async function handleExportLocalBackup(_message) {
   const result = await exportLocalBackup();
   if (!result.ok) return errorResponse(result.message, result.code);
-  return successResponse({ filename: result.filename, encrypted: true, state: await getBackupState() });
+  return successResponse({ filename: result.filename, encrypted: result.encrypted, state: await getBackupState() });
 }
 
 // ===================================================================
@@ -545,6 +560,7 @@ const ACTION_HANDLERS = {
   getSiteStatus:             handleGetSiteStatus,
   getBackupState:            forExtensionPages(handleGetBackupState),
   setBackupDestination:      forExtensionPages(handleSetBackupDestination),
+  setBackupEncryption:       forExtensionPages(handleSetBackupEncryption),
   setBackupAutoEnabled:      forExtensionPages(handleSetBackupAutoEnabled),
   saveGistConfig:            forExtensionPages(handleSaveGistConfig),
   saveWebdavConfig:          forExtensionPages(handleSaveWebdavConfig),
